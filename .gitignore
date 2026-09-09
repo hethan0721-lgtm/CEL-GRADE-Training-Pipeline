@@ -1,0 +1,61 @@
+﻿# Patient and research data
+data/
+**/data/
+*.xlsx
+*.xls
+*.csv
+*.tsv
+*.dta
+*.sav
+
+# Medical and research images
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tif
+*.tiff
+*.dicom
+*.dcm
+
+# Model weights and checkpoints
+*.pth
+*.pt
+*.pkl
+*.pickle
+*.joblib
+*.ckpt
+checkpoints/
+weights/
+
+# Generated results
+results/
+outputs/
+logs/
+figures/
+wandb/
+mlruns/
+
+# Local configuration and credentials
+.env
+.env.*
+.claude/
+settings.local.json
+
+# Python temporary files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# IDE and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Allow future synthetic example files
+!examples/**/*.csv
+!examples/**/*.png
