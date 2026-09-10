@@ -1,0 +1,12 @@
+# M0_CLIN text/tabular pipeline development/test dependencies.
+# Install requirements.txt FIRST (this file only adds testing tools on top
+# of the runtime dependencies; it does not duplicate or re-pin them):
+#
+#   pip install -r text_pipeline/requirements.txt
+#   pip install -r text_pipeline/requirements-dev.txt
+#
+# Used only by the tests/ suite under the repository root -- not imported by
+# any code under text_pipeline/src.
+-r requirements.txt
+
+pytest>=7.0.0

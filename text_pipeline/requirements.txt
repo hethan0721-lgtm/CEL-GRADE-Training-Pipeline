@@ -1,0 +1,25 @@
+# M0_CLIN text/tabular pipeline runtime dependencies
+# Python >= 3.9 (developed/tested against 3.11)
+#
+# Only packages actually imported by text_pipeline/src/*.py are listed.
+# Versions are lower bounds only (no upper pin); they reflect what the code
+# is written against, not a verified-compatible exact release -- pin exact
+# versions yourself if you need a fully reproducible environment.
+# Needed to run training/evaluation only. For running the test suite, also
+# install requirements-dev.txt.
+
+# Core machine learning
+xgboost>=1.7.0
+scikit-learn>=1.0.0
+imbalanced-learn>=0.10.0
+
+# Data processing
+pandas>=1.3.0
+numpy>=1.21.0
+
+# Visualization (evaluation plots: confusion matrix, ROC, PR curve, feature importance)
+matplotlib>=3.4.0
+seaborn>=0.11.0
+
+# Excel I/O engine used by pandas.read_excel()/to_excel() for .xlsx/.xls files
+openpyxl>=3.0.7
