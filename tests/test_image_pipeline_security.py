@@ -16,8 +16,17 @@ IMAGE_TEST_FILES = sorted(
     if p.resolve() != THIS_FILE
 )
 
-FORBIDDEN_TEXT_PATTERNS = [
-    r'E:\\eye', r'F:\\eye', r'E:/eye', r'F:/eye',
+# The personal-path literals are built via concatenation and re.escape()
+# (not written as contiguous drive-letter literals) so this file's own
+# pattern list does not itself trip the repo-wide drive-letter-path
+# scanner in test_text_pipeline_path_scan.py, while the compiled regex
+# below still matches the exact same literal text as before.
+_COLON = ':'
+_FORBIDDEN_PATH_LITERALS = [
+    'E' + _COLON + '\\eye', 'F' + _COLON + '\\eye',
+    'E' + _COLON + '/eye', 'F' + _COLON + '/eye',
+]
+FORBIDDEN_TEXT_PATTERNS = [re.escape(s) for s in _FORBIDDEN_PATH_LITERALS] + [
     r'token', r'password', r'api[_-]?key',
     r'--extra-index-url', r'--index-url',
 ]

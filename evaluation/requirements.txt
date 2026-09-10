@@ -1,0 +1,12 @@
+# Inherits both pipelines' own dependencies, since the evaluation modules
+# import and reuse each pipeline's model, config, and data-loading code
+# directly rather than duplicating it:
+#   - image_pipeline/requirements.txt: torch, torchvision, numpy,
+#     scikit-learn, Pillow, matplotlib, seaborn, tqdm
+#   - text_pipeline/requirements.txt: xgboost, scikit-learn,
+#     imbalanced-learn, pandas, numpy, matplotlib, seaborn, openpyxl
+# pandas and openpyxl (needed directly by the evaluation modules for
+# reading labels/input tables) are already covered by text_pipeline's
+# requirements.txt and are intentionally not re-listed here.
+-r ../image_pipeline/requirements.txt
+-r ../text_pipeline/requirements.txt
