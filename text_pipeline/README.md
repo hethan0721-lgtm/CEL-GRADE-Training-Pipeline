@@ -1,304 +1,277 @@
-# M0_CLIN: XGBoost Tabular Text-Pipeline (Surgery-Need Classifier)
+# M0_CLIN: XGBoost Clinical Tabular Pipeline
 
-## 1. Purpose
+## 1. Overview
 
-This module trains and evaluates a binary XGBoost classifier that predicts,
-from a small set of tabular clinical fields, whether a patient's record
-indicates a need for surgery. It is the canonical M0_CLIN training pipeline
-in this repository: data loading → train/test split → preprocessing →
-training → prediction → evaluation → artifact saving, driven entirely by a
-command-line interface.
+This module provides an end-to-end pipeline for training and evaluating a binary XGBoost classifier that predicts the need for surgery from structured clinical variables.
 
-No real patient data ships in this repository (see [Section 15](#15-real-patient-data-is-not-included)).
-This README describes only what the code in `text_pipeline/src` actually
-does — it does not claim any clinical performance, validation status, or
-regulatory standing.
+The pipeline includes:
 
-## 2. File Structure
+1. Tabular data loading and validation
+2. Data cleaning
+3. Stratified train-test splitting
+4. Feature preprocessing
+5. Training-set resampling
+6. XGBoost model training
+7. Five-fold cross-validation
+8. Internal and external evaluation
+9. Model and preprocessing artifact storage
 
-```
+The module is operated through a command-line interface and supports both Windows and Linux.
+
+## 2. Repository Structure
+
+```text
 text_pipeline/
-  README.md                  This file
-  requirements.txt            Runtime dependencies actually imported by src/
-  requirements-dev.txt        Adds test-only dependencies (pytest) on top of requirements.txt
-  src/
-    __init__.py               Package init; UTF-8 stdout/stderr fix; re-exports
-    config.py                 Config: paths, canonical feature set, hyperparameters, split/seed
-    data_loader.py             DataLoader: .csv/.xlsx/.xls ingestion, whitelist, cleaning, target encoding
-    feature_engineering.py     FeatureEngineer: imputers, StandardScaler, LabelEncoders
-    models.py                  SurgeryClassifier: XGBoost (+ RandomForest/LogisticRegression) wrapper
-    train.py                   ModelTrainer: split, SMOTE, class weights, fit, leakage-free CV
-    evaluate.py                 ModelEvaluator: metrics, confusion matrix, ROC/PR, plots, reports
-    main.py                     CLI entry point (train / internal-eval / external-eval)
-  configs/, scripts/          Reserved for future use (currently empty)
-  outputs/                    Default output directory (created at runtime; gitignored)
+├── README.md
+├── __init__.py
+├── requirements.txt
+├── requirements-dev.txt
+└── src/
+    ├── __init__.py
+    ├── config.py
+    ├── data_loader.py
+    ├── feature_engineering.py
+    ├── models.py
+    ├── train.py
+    ├── evaluate.py
+    └── main.py
 ```
 
-## 3. Required Input Table Fields
+| File                     | Description                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------- |
+| `config.py`              | Defines the input schema, preprocessing settings, model parameters, random seed, and output paths |
+| `data_loader.py`         | Loads, validates, filters, and cleans tabular input data                                          |
+| `feature_engineering.py` | Applies imputation, scaling, and categorical encoding                                             |
+| `models.py`              | Defines the XGBoost classifier interface                                                          |
+| `train.py`               | Performs SMOTE, class-weight calculation, model fitting, and cross-validation                     |
+| `evaluate.py`            | Computes evaluation metrics and generates plots and reports                                       |
+| `main.py`                | Provides the command-line interface for training and evaluation                                   |
 
-The loader whitelists exactly `Config.FEATURE_COLUMNS + [Config.TARGET_COLUMN]`
-from each input file (`.csv`, `.xlsx`, or `.xls` — dispatched by extension,
-see [Section 13](#13-supported-file-formats)); every other column is
-dropped. `Config.FEATURE_COLUMNS` is, by design, exactly the 5 features
-that reach the model (there is no separate "nominal vs. actually-used"
-feature list anymore — see [Section 4](#4-model-features-used)). Your input
-table should contain:
+The `outputs/` directory is created at runtime and is excluded from version control.
 
-| Column | Type | Role |
-|---|---|---|
-| `脱位程度` | categorical (text) | used feature |
-| `矫正视力` | numeric | used feature |
-| `矫正球镜度数(D)` | numeric | used feature |
-| `矫正柱镜度数(D)` | numeric | used feature |
-| `IOLMaster-Cyl(D)` | numeric | used feature |
-| `是否需要手术` | text, one of `手术` / `不手术` | target column |
+## 3. Input Data
 
-**Backward-compatible extra columns.** Older raw exports may still contain
-`是否配合` (cooperation) or `年龄` (age) columns, or other metadata. These
-never entered the historical canonical model and must not be added back;
-an input file MAY still contain them, but `DataLoader`'s whitelist silently
-drops any column that is not in `FEATURE_COLUMNS`/`PRESERVE_COLUMNS`, so
-they are guaranteed to never reach the model. This tolerance is covered by
-a synthetic, in-test-only DataFrame in
-`tests/test_text_pipeline_input_validation.py::test_legacy_columns_tolerated_but_never_reach_the_model`;
-the public example files under `examples/synthetic_tabular_data/` contain
-only the columns actually needed (`sample_id` + the 5 canonical features +
-target) and do not include these legacy columns.
+The pipeline supports the following file formats:
 
-Optionally, `姓名` / `身份证号` / `省份` (`Config.PRESERVE_COLUMNS`) may be
-present in the raw file — `DataLoader` splits these off into a separate,
-in-memory-only `preserved_data` frame and they are **never** written to any
-model input, saved artifact, or evaluation output. Do not add any other
-identifying column (phone, address, medical record number, patient ID,
-etc.); the whitelist already drops anything not listed above, but avoid
-including identifying data in source files at all.
+* `.csv`
+* `.xlsx`
+* `.xls`
 
-Numeric columns tolerate the raw-text artifacts real optometry exports
-sometimes contain (a trailing `+`/`-`, or a full-width minus `−`); these are
-stripped and the value coerced to `float`, with unparseable values becoming
-`NaN` (`DataLoader.clean_numeric_columns`).
+CSV files are read with UTF-8-compatible encoding. Excel files are read through the pandas Excel interface.
 
-## 4. Model Features Used
+Each input table must contain five model features and one binary target variable.
 
-`Config.FEATURE_COLUMNS` = `Config.CATEGORICAL_FEATURES` + `Config.NUMERICAL_FEATURES`,
-exactly the 5 columns that reach the trained model — this is enforced by a
-regression test (`tests/test_text_pipeline_input_validation.py::test_canonical_feature_columns_are_exactly_the_five_used_features`):
+| Clinical variable                       | Data type     | Processing                                   |
+| --------------------------------------- | ------------- | -------------------------------------------- |
+| Dislocation severity                    | Categorical   | String cleaning and label encoding           |
+| Corrected visual acuity                 | Numerical     | Median imputation and standardization        |
+| Corrected spherical power in diopters   | Numerical     | Median imputation and standardization        |
+| Corrected cylindrical power in diopters | Numerical     | Median imputation and standardization        |
+| IOLMaster cylinder power in diopters    | Numerical     | Median imputation and standardization        |
+| Need for surgery                        | Binary target | Non-surgery is encoded as 0 and surgery as 1 |
 
-- Categorical (see [Section 5](#5-categorical-missing-value-handling-historical-behaviour) for how missingness is actually handled, then label-encoded): `脱位程度`
-- Numerical (median-imputed, then standardized): `矫正视力`, `矫正球镜度数(D)`, `矫正柱镜度数(D)`, `IOLMaster-Cyl(D)`
+The exact machine-readable column names and raw label values are defined in `Config.FEATURE_COLUMNS`, `Config.TARGET_COLUMN`, and `Config.LABEL_MAPPING`. Input files must follow that schema. The bundled synthetic CSV files provide valid templates.
 
-`是否配合` and `年龄` are **not** in `FEATURE_COLUMNS` and must not be added
-back — they never entered the historical canonical model (see
-[Section 3](#3-required-input-table-fields)).
+Only configured model features and the target variable enter the training matrix. Other columns are excluded from model fitting.
 
-## 5. Categorical Missing-Value Handling (Historical Behaviour)
+Rows with missing or unsupported target values are removed before training. Rows in which all numerical model features are missing are also removed.
 
-**This is intentionally preserved, non-"best-practice" behaviour — read
-this before assuming `most_frequent` imputation is happening.**
+## 4. Preprocessing Pipeline
 
-`DataLoader.clean_categorical_columns()` / `_clean_dataframe()` casts the
-categorical column to `str` (to standardize/strip values) *before*
-`FeatureEngineer`'s categorical `SimpleImputer(strategy='most_frequent')`
-ever runs. That cast turns a real missing value (`NaN`) into the literal
-string `"nan"`. By the time the categorical imputer sees the data, there is
-no actual `NaN` left to impute — `"nan"` is simply treated as its own
-explicit category and label-encoded as such by `LabelEncoder`.
+The preprocessing sequence is:
 
-In other words: **categorical missing values are not most-frequent-imputed
-in practice; they become an explicit "missing" category.** The
-`SimpleImputer` object (`Config.FILL_STRATEGY['categorical'] = 'most_frequent'`)
-is retained in the code for structural/pickle compatibility with the
-existing saved pipeline shape — not because it is doing effective
-imputation. This pass does not reorder the cleaning steps to make the
-imputer effective, because that would change what the model is trained on
-(a real, if subtle, change in categorical missing-value semantics).
-`tests/test_text_pipeline_categorical_missing_regression.py` pins this
-behaviour as a regression test.
+1. Retain the configured feature and target columns.
+2. Clean numerical values and convert them to floating-point values.
+3. Convert unparseable numerical values to `NaN`.
+4. Clean categorical values and convert them to strings.
+5. Convert categorical missing values into an explicit `nan` category.
+6. Remove rows with missing or unsupported target values.
+7. Encode the binary target.
+8. Create a stratified 80/20 train-test split.
+9. Fit the feature-processing objects on the 80% training partition.
+10. Apply the fitted processing objects to the internal test partition and external dataset.
+11. Apply SMOTE only to the processed training partition.
+12. Fit the XGBoost classifier.
 
-## 6. Target Variable
+Numerical features are median-imputed and standardized with `StandardScaler`. The categorical feature is encoded with `LabelEncoder`.
 
-`是否需要手术`, encoded via `Config.LABEL_MAPPING`: `不手术` → `0`, `手术` → `1`.
-Rows with a missing/unmapped target are dropped before training.
+The fitted feature-processing components are saved with the trained model and reused during evaluation.
 
-## 7. Preprocessing Order (as executed)
+## 5. Training Configuration
 
-1. **Whitelist columns** — keep only `FEATURE_COLUMNS + [TARGET_COLUMN]` (plus, separately, any `PRESERVE_COLUMNS` present). Any other column (legacy `是否配合`/`年龄`, identifiers, free-form metadata) is dropped here and never seen again.
-2. **Clean numerical columns** — strip trailing `+`/`-`/full-width minus, coerce to `float`; rows where *every* numerical column is missing are dropped.
-3. **Clean categorical columns** — cast to `str` and strip whitespace (this is what turns real missingness into the literal string `"nan"` — see [Section 5](#5-categorical-missing-value-handling-historical-behaviour)).
-4. **Drop rows with a missing target**, then **encode the target** via `LABEL_MAPPING`.
-5. **Split 80/20** (`train_test_split`, stratified on the target, `Config.TEST_SIZE=0.2`, `Config.RANDOM_STATE=42` by default) — this happens on the *cleaned, pre-feature-engineering* data.
-6. **Fit `FeatureEngineer` on the 80% training partition only**: `SimpleImputer(strategy='median')` for numeric columns, `StandardScaler` fit on the imputed numeric values, the (in-practice-inert, see Section 5) categorical `SimpleImputer` + `LabelEncoder` per categorical column.
-7. **Transform-only** the internal 20% test set and the external validation set with that same fitted `FeatureEngineer` — it is never refit on them.
-8. **SMOTE** (`imblearn.over_sampling.SMOTE`, `sampling_strategy='auto'`, `k_neighbors=5`) is fit and applied to the 80% training partition only.
-9. **Class weights** (`sklearn.utils.class_weight.compute_class_weight('balanced', ...)`) are computed on the *SMOTE-resampled* training labels and converted to a single `scale_pos_weight` passed to XGBoost.
-10. **Train** XGBoost on the resampled 80% training partition, for the fixed `n_estimators=200`, with no early stopping (see [Section 9](#9-training-is-fixed-no-early-stopping-no-automatic-tuning)).
+The classifier uses a fixed XGBoost configuration.
 
-## 8. How Data Leakage Is Avoided
+| Parameter              |             Value |
+| ---------------------- | ----------------: |
+| Objective              | `binary:logistic` |
+| Evaluation metrics     |  `logloss`, `auc` |
+| Maximum tree depth     |                 6 |
+| Learning rate          |              0.05 |
+| Number of estimators   |               200 |
+| Minimum child weight   |                 3 |
+| Gamma                  |               0.1 |
+| Subsample ratio        |               0.8 |
+| Column subsample ratio |               0.8 |
+| L1 regularization      |              0.05 |
+| L2 regularization      |               1.0 |
+| Default random seed    |                42 |
 
-- The 80/20 split happens **before** any preprocessing object is created — `FeatureEngineer`, `SimpleImputer`, `StandardScaler`, `LabelEncoder`, and `SMOTE` are all fit exclusively on the 80% training partition.
-- The internal 20% test set and the external validation file are only ever passed through `FeatureEngineer.transform()` (never `.fit()` / `.fit_transform()`).
-- 5-fold cross-validation (`ModelTrainer.cross_validate_pipeline`, diagnostic only — it does not select the final model or its hyperparameters) refits a **fresh** `FeatureEngineer` and re-applies SMOTE independently inside each fold, on that fold's training rows only, then scores the fold's held-out rows with a fresh model. No fold's held-out rows ever influence that fold's fit.
-- `--mode internal-eval` and `--mode external-eval` (see [Section 11](#11-internal-evaluation)/[12](#12-external-evaluation)) load the saved `FeatureEngineer` and model and only ever call `.transform()` / `.predict()` — they never fit or refit anything.
-- The internal 20% test set is also passed to XGBoost's `fit(..., eval_set=...)` for per-round metric logging only — no early stopping is configured (see next section), so this does not influence which iteration's model is kept; training always runs the full `n_estimators=200`.
-- Automated leakage-guard tests live in `tests/test_text_pipeline_leakage_guard.py`.
+The model is trained for 200 estimators without early stopping. Automated hyperparameter search is not part of the training workflow.
 
-## 9. Training Is Fixed: No Early Stopping, No Automatic Tuning
+SMOTE is applied only to the training partition with:
 
-The canonical model is trained **once per run**, with a single fixed
-`xgboost.XGBClassifier` hyperparameter set — `Config.XGBOOST_PARAMS`:
-`max_depth=6`, `learning_rate=0.05`, `n_estimators=200`,
-`min_child_weight=3`, `gamma=0.1`, `subsample=0.8`, `colsample_bytree=0.8`,
-`reg_alpha=0.05`, `reg_lambda=1.0`, plus `scale_pos_weight` computed as
-described in [Section 7](#7-preprocessing-order-as-executed), and
-`Config.RANDOM_STATE=42` (overridable via `--seed`, propagated consistently
-to the split, SMOTE, and the model).
+* `sampling_strategy='auto'`
+* `k_neighbors=5`
+* Default random seed of 42
 
-- **No early stopping.** An `EARLY_STOPPING_ROUNDS` setting previously
-  existed in `Config` but was never actually wired into
-  `SurgeryClassifier`'s estimator construction or its `.fit()` call — it
-  had no runtime effect, so it has been removed rather than fixed or wired
-  up. Training always runs the full `n_estimators=200`.
-- **No automatic hyperparameter search.** `Config` still defines a
-  `RandomizedSearchCV`-based helper (`ModelTrainer.hyperparameter_tuning()`,
-  `PARAM_GRID`, `RANDOM_SEARCH_PARAMS`) for manual/offline experimentation,
-  but `Config.ENABLE_HYPERPARAMETER_TUNING` defaults to `False` and the CLI
-  (`main.py`) always calls `train_pipeline(..., hyperparameter_tuning=False)`.
-  **The canonical model reported by this pipeline has never been produced
-  by this pipeline's own automatic hyperparameter search** — its
-  hyperparameters are the fixed values above. Do not enable
-  `ENABLE_HYPERPARAMETER_TUNING` or call `hyperparameter_tuning()` as part
-  of the canonical public pipeline; it exists only as a separate,
-  non-canonical helper.
-- `tests/test_text_pipeline_fixed_hyperparameters.py` pins all of the above
-  as regression tests.
+Balanced class weights are calculated from the resampled training labels and converted to `scale_pos_weight` for XGBoost.
 
-## 10. Feature-Set History (What Changed and Why)
+Five-fold stratified cross-validation is performed for internal diagnostic evaluation. Each fold independently fits its preprocessing components and applies SMOTE only to the training rows of that fold. Cross-validation does not select model hyperparameters or replace the final fitted model.
 
-An earlier pass found that `Config.FEATURE_COLUMNS` nominally listed 7
-columns (including `是否配合`/`年龄`) while the model only ever used 5, due
-to a naming mismatch between `FEATURE_COLUMNS` and
-`CATEGORICAL_FEATURES`/`NUMERICAL_FEATURES`. This has since been resolved
-by making `FEATURE_COLUMNS` equal to the 5 real features (this is a config
-correction, not a change to the model's actual training data, algorithm,
-or results — the 5 features, their preprocessing, and their order are
-byte-for-byte the same as before). See [Section 4](#4-model-features-used).
+## 6. Data Leakage Prevention
 
-## 11. Internal Evaluation
+The pipeline separates model fitting from evaluation data processing.
 
-`--mode internal-eval` re-scores an already-trained model on the internal
-20% test partition **without retraining or refitting anything**. It
-reloads the input file given by `--input-data`, reproduces the identical
-80/20 split (same file, same `Config.TEST_SIZE`, same `--seed`), and
-transforms the reconstructed 20% partition with the `FeatureEngineer`
-saved under `<output-dir>/models/feature_engineer.pkl`, then predicts with
-the model saved under `<output-dir>/models/`. **The `--seed` must match the
-one used for the original `--mode train` run**, or the reconstructed
-partition will not be the model's actual held-out set.
+* The 80/20 split is created before any imputer, scaler, encoder, or SMOTE object is fitted.
+* Numerical imputation and standardization are fitted only on the 80% training partition.
+* Categorical encoding is fitted only on the 80% training partition.
+* SMOTE is fitted and applied only to the training partition.
+* The internal 20% test partition is processed with the fitted training preprocessor.
+* The external dataset is processed with the same fitted preprocessor.
+* Internal and external evaluation modes do not refit the preprocessor or classifier.
+* Each cross-validation fold creates and fits independent preprocessing and resampling components.
 
-## 12. External Evaluation
+Automated leakage checks are provided in `tests/test_text_pipeline_leakage_guard.py`.
 
-`--mode external-eval` scores an already-trained model against a new file
-(`--input-data`) that was never used for training. It loads the saved
-`FeatureEngineer` and model and only ever calls `.transform()` / `.predict()`
-— it never fits or refits any imputer, scaler, encoder, or the model
-itself, satisfying "external data may only use the preprocessor/model
-artifacts saved at training time."
+## 7. Installation
 
-## 13. Supported File Formats
+Run all commands from the repository root.
 
-`DataLoader` dispatches on file extension:
-
-- `.csv` → `pandas.read_csv(..., encoding='utf-8-sig')` (reads correctly whether or not the file has a UTF-8 BOM, e.g. from Excel's "CSV UTF-8" save option)
-- `.xlsx` / `.xls` → `pandas.read_excel(...)` (unchanged from before)
-
-Both formats are read into an identical in-memory `DataFrame` shape and
-then go through the exact same preprocessing/training code — the file
-format has no effect on model training. The public examples under
-`examples/synthetic_tabular_data/` are `.csv` (the repository's root
-`.gitignore` excludes `*.xlsx` but allow-lists `examples/**/*.csv`); `.xlsx`/`.xls`
-remain fully supported for your own data.
-
-## 14. Saved Artifacts
-
-Under `<output-dir>/models/` (default `text_pipeline/outputs/models/`):
-
-- `feature_engineer.pkl` — pickled dict with the fitted numeric imputer, categorical imputer, `StandardScaler`, per-column `LabelEncoder`s, feature name list, and the `Config` used.
-- `best_xgboost_model.pkl` — pickled dict with the fitted `XGBClassifier`, model type, feature names, feature importances, and the `Config` used.
-- `training_history.pkl` — training time, sample counts, SMOTE/class-weight flags, and (if `--mode train`) the leakage-free cross-validation results.
-
-Under `<output-dir>/eval_internal/` and `<output-dir>/eval_external/`:
-`classification_report.txt` and evaluation plots (confusion matrix, ROC
-curve, precision-recall curve, feature importance, metrics comparison).
-None of these outputs include per-row predictions, raw feature values, or
-any `PRESERVE_COLUMNS` identity data — only aggregate metrics and plots.
-
-## 15. Installing Dependencies
-
-Runtime only (train/evaluate):
+Install runtime dependencies:
 
 ```bash
 pip install -r text_pipeline/requirements.txt
 ```
 
-Runtime + test suite (`tests/` under the repository root):
+Install runtime and development dependencies:
 
 ```bash
-pip install -r text_pipeline/requirements.txt
 pip install -r text_pipeline/requirements-dev.txt
 ```
 
-## 16. Running the Pipeline
+The development requirements include the runtime dependencies and `pytest`.
 
-All paths default to files inside this repository and are resolved with
-`pathlib.Path`, so the same commands work on Windows and Linux. Run from
-the repository root.
+## 8. Command-Line Usage
 
-**With the bundled synthetic example data** (see
-[`examples/synthetic_tabular_data/README.md`](../examples/synthetic_tabular_data/README.md)) —
-the defaults already point here, so no flags are required:
+Display the available command-line options:
+
+```bash
+python -m text_pipeline.src.main --help
+```
+
+### Train with the bundled synthetic data
+
+The default input paths point to the synthetic training and external evaluation files in `examples/synthetic_tabular_data/`.
 
 ```bash
 python -m text_pipeline.src.main --mode train
 ```
 
-**With your own compliant data** (never real patient data committed to this
-repo — see [Section 17](#17-real-patient-data-is-not-included); `.csv`,
-`.xlsx`, or `.xls` all work):
+### Train with custom data
 
 ```bash
-python -m text_pipeline.src.main \
-  --mode train \
-  --input-data /path/to/your_train.csv \
-  --external-data /path/to/your_external_validation.csv \
-  --output-dir /path/to/your_outputs \
-  --seed 42
+python -m text_pipeline.src.main --mode train --input-data /path/to/training_data.csv --external-data /path/to/external_data.csv --output-dir /path/to/outputs --seed 42
 ```
 
-Then, without retraining:
+The same command structure can be used with `.xlsx` or `.xls` input files.
+
+### Reproduce the internal evaluation
 
 ```bash
-# Re-score the same model on its internal 20% test partition (seed must match the train run)
-python -m text_pipeline.src.main --mode internal-eval \
-  --input-data /path/to/your_train.csv --output-dir /path/to/your_outputs --seed 42
-
-# Score the same model against a new external file
-python -m text_pipeline.src.main --mode external-eval \
-  --input-data /path/to/another_compliant_file.csv --output-dir /path/to/your_outputs
+python -m text_pipeline.src.main --mode internal-eval --input-data /path/to/training_data.csv --output-dir /path/to/outputs --seed 42
 ```
 
-Run `python -m text_pipeline.src.main --help` for the full flag list.
+The input file and seed must match the training run so that the same internal 20% test partition is reconstructed.
 
-## 17. Real Patient Data Is Not Included
+### Evaluate an external dataset
 
-No real patient data, real predictions, or real trained model weights are
-part of this repository. `--input-data` / `--external-data` must point to
-data you are authorized to use; this module performs no data collection or
-transmission of its own.
+```bash
+python -m text_pipeline.src.main --mode external-eval --input-data /path/to/external_data.csv --output-dir /path/to/outputs
+```
 
-## 18. Synthetic Example Data
+External evaluation loads the saved model and fitted feature processor. It does not retrain or refit any component.
 
-The files under `examples/synthetic_tabular_data/` are entirely
-artificially generated (see that directory's own README and
-`generate_synthetic_data.py`). They exist only to exercise the code's
-interface and are not derived from, and do not represent, any real patient
-population or clinical distribution.
+## 9. Outputs
+
+The default output directory is `text_pipeline/outputs/`.
+
+### Model artifacts
+
+The following files are saved under `<output-dir>/models/`:
+
+| File                     | Description                                                                                                      |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `feature_engineer.pkl`   | Fitted preprocessing components and feature metadata                                                             |
+| `best_xgboost_model.pkl` | Trained XGBoost model, feature names, and feature importance values                                              |
+| `training_history.pkl`   | Training duration, sample counts, resampling information, class-weight information, and cross-validation results |
+
+### Evaluation outputs
+
+Internal evaluation results are saved under:
+
+```text
+<output-dir>/eval_internal/
+```
+
+External evaluation results are saved under:
+
+```text
+<output-dir>/eval_external/
+```
+
+Generated evaluation files include:
+
+* Classification report
+* Confusion matrix
+* Receiver operating characteristic curve
+* Precision-recall curve
+* Feature importance plot
+* Metrics comparison plot
+
+Evaluation outputs contain aggregate metrics and plots. They do not contain raw input rows or row-level prediction files.
+
+## 10. Reproducibility and Testing
+
+The default random seed is 42. The command-line `--seed` argument controls the random state used by:
+
+* The stratified train-test split
+* SMOTE
+* XGBoost
+* Cross-validation
+
+To run the text-pipeline test suite without collecting the image-pipeline tests:
+
+```bash
+python -m pytest -q tests --ignore-glob="tests/test_image_pipeline_*.py"
+```
+
+The tests cover:
+
+* Module imports
+* Input schema validation
+* Synthetic data loading
+* Feature-set consistency
+* Data leakage prevention
+* Categorical missing-value handling
+* Fixed training parameters
+* Path portability
+* Privacy safeguards
+* End-to-end execution with synthetic data
+
+## 11. Data and Model Availability
+
+This repository does not include real patient data, real patient-level predictions, or trained model weights.
+
+The files in [`examples/synthetic_tabular_data/`](../examples/synthetic_tabular_data/) are artificially generated and are provided only to demonstrate the expected input structure and test the software interface. They are not derived from a real patient population and must not be used to estimate clinical performance.
+
+Users must provide their own authorized data in the required schema when running the pipeline on research datasets. Sensitive or identifiable clinical data must not be committed to a public repository.
