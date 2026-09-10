@@ -1,0 +1,12 @@
+# torch and torchvision must be installed as a mutually compatible pair.
+# GPU users should follow PyTorch's official installation instructions for
+# their local CUDA toolkit version instead of relying on the generic PyPI
+# wheels below. This file does not bind to any specific CUDA build.
+torch>=2.0,<3.0
+torchvision>=0.15,<1.0
+numpy>=1.21,<3.0
+scikit-learn>=1.0,<2.0
+Pillow>=8.3,<12.0
+matplotlib>=3.4,<4.0
+seaborn>=0.11,<1.0
+tqdm>=4.62,<5.0
