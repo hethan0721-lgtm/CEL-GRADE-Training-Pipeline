@@ -1,103 +1,118 @@
-# M0_IMG ResNet-50 Image Classification Pipeline
-
-This module is the canonical M0_IMG image training and evaluation
-pipeline. It performs a three-class severity classification task (Mild,
-Moderate, Severe) on user-supplied ophthalmic images.
-
-This repository does **not** contain any research images, patient data,
-trained model checkpoints, or paper result files. The code itself is
-agnostic to where images came from: labels are derived purely from the
-`0` / `1` / `2` subfolder an image is placed in. This module does not
-implement or discuss patient-level splitting, external validation
-cohorts, or any comparison against other model variants -- it is a
-single, self-contained image-classification training/evaluation/predict
-pipeline, described here strictly as it behaves.
+# M0_IMG: ResNet-50 Image Classification Pipeline
 
 ## 1. Overview
 
-- **Task**: 3-class severity classification (Mild / Moderate / Severe)
-  from a single ophthalmic image.
-- **Input**: a user-provided image directory with `0/`, `1/`, `2/`
-  class subfolders (see [Dataset structure](#3-dataset-structure)).
-- **Model**: ResNet-50 backbone (ImageNet-pretrained) with a custom
-  classification head.
-- **Interface**: a single command-line entry point supporting `train`,
-  `evaluate`, and `predict` modes.
+This module provides an end-to-end pipeline for training, evaluating, and applying a three-class image classifier.
 
-## 2. Pipeline
+The classification task assigns each ophthalmic image to one of three severity categories:
 
-The real, code-verified execution sequence is:
+* Mild
+* Moderate
+* Severe
 
-1. Read the user-provided `0/`, `1/`, `2/` class directories.
-2. Assign labels purely from the directory name (`0`, `1`, `2`).
-3. Apply random undersampling to class `1`, capped at a maximum of
-   1200 images (classes `0` and `2` are not capped).
-4. Perform an image-level, stratified train/validation/test split with
-   `random_state=42`.
-5. Resulting split proportions are approximately:
-   - Training: 65%
-   - Validation: 15%
-   - Test: 20%
-6. Only the training split receives random image augmentation.
-7. The validation and test splits only go through `Resize`, `ToTensor`,
-   and ImageNet normalization.
-8. A ResNet-50 backbone is created using `ResNet50_Weights.IMAGENET1K_V1`
-   pretrained weights.
-9. The initial `conv1` convolution is frozen; the rest of the ResNet
-   backbone (`bn1`, `layer1`-`layer4`) and the custom classification
-   head are fine-tuned.
-10. Training uses Focal Loss, the Adam optimizer, a
-    `ReduceLROnPlateau` learning-rate scheduler, and early stopping.
-11. The checkpoint with the highest validation accuracy is saved as
-    `best_model.pth`.
-12. The best checkpoint is reloaded and evaluated on the held-out test
-    split.
+The pipeline includes:
 
-**Note:** `layer1` and `layer2` of the ResNet-50 backbone are **not**
-frozen -- only the stem `conv1` convolution is. See
-[Model architecture](#6-model-architecture) below.
+1. Image discovery and label assignment
+2. Class-specific undersampling
+3. Stratified train-validation-test splitting
+4. Image preprocessing and augmentation
+5. ResNet-50 model construction
+6. Model training and checkpoint selection
+7. Test-set evaluation
+8. Single-image prediction
 
-## 3. Dataset structure
+The module is operated through a command-line interface and supports both CPU and CUDA devices.
 
-This pipeline does not ship with any dataset. Users must supply their
-own image directory with the following structure:
+## 2. Repository Structure
 
+```text
+image_pipeline/
+├── README.md
+├── __init__.py
+├── requirements.txt
+├── requirements-dev.txt
+└── src/
+    ├── __init__.py
+    ├── config.py
+    ├── data_utils.py
+    ├── models.py
+    ├── train.py
+    ├── evaluate.py
+    └── main.py
 ```
+
+| File            | Description                                                                                        |
+| --------------- | -------------------------------------------------------------------------------------------------- |
+| `config.py`     | Defines image preprocessing, training parameters, class mappings, random seed, and output settings |
+| `data_utils.py` | Discovers images, assigns labels, performs undersampling and splitting, and creates data loaders   |
+| `models.py`     | Defines the ResNet-50 classifier and custom classification head                                    |
+| `train.py`      | Implements Focal Loss, optimization, scheduling, early stopping, and checkpoint storage            |
+| `evaluate.py`   | Computes evaluation metrics and generates plots and reports                                        |
+| `main.py`       | Provides the command-line interface for training, evaluation, and prediction                       |
+
+The output directory is created at runtime and is excluded from version control.
+
+## 3. Dataset Structure
+
+The pipeline expects a user-provided image directory containing three class subdirectories:
+
+```text
 dataset/
 ├── 0/
 ├── 1/
 └── 2/
 ```
 
-## 4. Class mapping
+The class mapping is:
 
-| Folder | Class    |
-|--------|----------|
-| `0`    | Mild     |
-| `1`    | Moderate |
-| `2`    | Severe   |
+| Directory | Class    |
+| --------- | -------- |
+| `0`       | Mild     |
+| `1`       | Moderate |
+| `2`       | Severe   |
 
-Supported image formats (matched case-insensitively):
+Labels are assigned from the immediate class-directory name. Image filenames are not used to determine labels.
 
-- `.jpg`
-- `.jpeg`
-- `.png`
-- `.bmp`
-- `.tiff`
+Supported image formats are matched case-insensitively:
 
-Notes:
+* `.jpg`
+* `.jpeg`
+* `.png`
+* `.bmp`
+* `.tiff`
 
-- Labels come entirely from the subfolder name -- there is no Excel,
-  CSV, or other label file involved.
-- Filenames themselves are never used to derive a label.
-- This repository does not provide any example medical images.
-- The automated test suite only creates solid-color, non-medical
-  placeholder images inside pytest's temporary directories at test run
-  time; nothing is retained in the repository afterward.
+Each of the three class directories must exist before training or evaluation begins.
 
-## 5. Data preprocessing and augmentation
+## 4. Data Preparation and Splitting
 
-Training split transform order:
+The data-preparation sequence is:
+
+1. Discover supported image files in the `0`, `1`, and `2` directories.
+2. Assign the corresponding class label to each image.
+3. Randomly undersample class `1` to a maximum of 1,200 images.
+4. Retain all available images from classes `0` and `2`.
+5. Create an image-level stratified train-validation-test split.
+6. Build separate data loaders for the three partitions.
+
+The default split is approximately:
+
+| Partition  | Proportion |
+| ---------- | ---------: |
+| Training   |        65% |
+| Validation |        15% |
+| Test       |        20% |
+
+The default random seed is 42. The split is stratified so that the class distribution is maintained across the three partitions.
+
+The splitting unit is an individual image.
+
+## 5. Image Preprocessing and Augmentation
+
+All images are converted to RGB before transformation.
+
+### Training transformations
+
+The training transformation sequence is:
 
 1. `Resize`
 2. `RandomHorizontalFlip(p=0.5)`
@@ -109,31 +124,49 @@ Training split transform order:
 8. `ToTensor`
 9. ImageNet normalization
 
-Validation and test split transforms:
+### Validation and test transformations
 
-```
+Validation and test images do not receive random augmentation.
+
+```text
 Resize(224 x 224) -> ToTensor -> ImageNet normalization
 ```
 
-Normalization values:
+The normalization values are:
 
-```
+```text
 mean = [0.485, 0.456, 0.406]
 std  = [0.229, 0.224, 0.225]
 ```
 
-## 6. Model architecture
+Random augmentation is applied only to the training partition.
 
-- **Backbone**: ResNet-50
-- **Pretrained weights**: `torchvision.models.ResNet50_Weights.IMAGENET1K_V1`
-- **Frozen**: the initial `conv1` convolution only
-- **Fine-tuned**: `bn1`, `layer1`, `layer2`, `layer3`, `layer4`, and the
-  entire custom classification head
-- **Pooling**: `AdaptiveAvgPool2d((7, 7))`
+## 6. Model Architecture
 
-Classification head:
+The classifier uses a ResNet-50 backbone initialized with:
 
+```python
+ResNet50_Weights.IMAGENET1K_V1
 ```
+
+The initial `conv1` convolution is frozen. The following components remain trainable:
+
+* `bn1`
+* `layer1`
+* `layer2`
+* `layer3`
+* `layer4`
+* The complete custom classification head
+
+The backbone output is processed by:
+
+```python
+AdaptiveAvgPool2d((7, 7))
+```
+
+The classification head is:
+
+```text
 Flatten
 -> Dropout(0.4)
 -> Linear(2048 * 7 * 7, 512)
@@ -147,44 +180,58 @@ Flatten
 -> Linear(128, 3)
 ```
 
-## 7. Training configuration
+The final layer produces logits for the Mild, Moderate, and Severe classes.
 
-- **Loss**: Focal Loss
-  - `alpha = [1.0, 1.2, 10.0]` (Mild, Moderate, Severe)
-  - `gamma = 2.5`
-  - `label_smoothing = 0.05`
-- **Optimizer**: Adam
-  - `learning_rate = 5e-5`
-  - `weight_decay = 1e-4`
-- **Batch size**: 16
-- **Maximum epochs**: 200
-- **Scheduler**: `ReduceLROnPlateau`
-  - `mode = 'min'`
-  - `factor = 0.5`
-  - `patience = 7`
-- **Early stopping**: monitors validation loss, `patience = 15`
-- **Best checkpoint selection**: highest validation accuracy
-- **Mixed precision training**: automatically enabled when training on
-  a CUDA device (`torch.cuda.amp.autocast` / `GradScaler`); not used on
-  CPU
-- Automatic hyperparameter search is not part of this pipeline; all
-  hyperparameters above are fixed values in the source code.
+## 7. Training Configuration
+
+The pipeline uses the following fixed training configuration:
+
+| Component                   | Setting             |
+| --------------------------- | ------------------- |
+| Loss function               | Focal Loss          |
+| Focal Loss class weights    | `[1.0, 1.2, 10.0]`  |
+| Focal Loss gamma            | `2.5`               |
+| Label smoothing             | `0.05`              |
+| Optimizer                   | Adam                |
+| Learning rate               | `5e-5`              |
+| Weight decay                | `1e-4`              |
+| Batch size                  | `16`                |
+| Maximum epochs              | `200`               |
+| Scheduler                   | `ReduceLROnPlateau` |
+| Scheduler mode              | `min`               |
+| Scheduler factor            | `0.5`               |
+| Scheduler patience          | `7`                 |
+| Early-stopping monitor      | Validation loss     |
+| Early-stopping patience     | `15`                |
+| Checkpoint-selection metric | Validation accuracy |
+
+The checkpoint with the highest validation accuracy is saved as `best_model.pth`.
+
+The learning-rate scheduler and early-stopping mechanism monitor validation loss. Training stops when the validation loss does not improve for 15 consecutive epochs or when the maximum of 200 epochs is reached.
+
+Mixed-precision training is enabled automatically when CUDA is used. Standard full-precision training is used on CPU.
+
+The pipeline uses fixed hyperparameters and does not perform automated hyperparameter search.
 
 ## 8. Installation
 
-From the repository root:
+Run all commands from the repository root.
+
+Create a virtual environment:
 
 ```bash
 python -m venv .venv
 ```
 
-Activate the virtual environment:
+Activate the environment on Windows:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+Activate the environment on Linux or macOS:
 
 ```bash
-# Windows
-.venv\Scripts\activate
-
-# Linux / macOS
 source .venv/bin/activate
 ```
 
@@ -194,71 +241,61 @@ Install runtime dependencies:
 python -m pip install -r image_pipeline/requirements.txt
 ```
 
-Install test dependencies (adds `pytest` on top of the runtime deps):
+Install runtime and development dependencies:
 
 ```bash
 python -m pip install -r image_pipeline/requirements-dev.txt
 ```
 
-`torch` and `torchvision` must be installed as a mutually compatible
-pair. GPU users should follow PyTorch's official installation
-instructions for their local CUDA toolkit version instead of relying on
-the generic PyPI wheels in `requirements.txt`.
+The development requirements include the runtime dependencies and `pytest`.
 
-**Environment records** (two distinct things -- do not conflate them):
+`torch` and `torchvision` must be installed as a compatible pair. CUDA users should select the appropriate PyTorch installation for their operating system and CUDA environment.
 
-- **Historical environment record** (found in the original, pre-cleanup
-  source tree's `requirements.txt`, used only as evidence for the
-  version *ranges* in `image_pipeline/requirements.txt`):
-  - `torch 2.0.1`
-  - `torchvision 0.15.2`
-- **Public pipeline verification environment** (used to verify that
-  this cleaned-up, public version of the pipeline imports, runs its
-  CLI, and passes its test suite -- this is **not** a claim about the
-  original training environment):
-  - Python 3.13.5
-  - `torch 2.8.0+cu126`
-  - `torchvision 0.23.0+cu126`
-  - `pytest 8.4.2`
+## 9. Command-Line Usage
 
-## 9. Command-line usage
+Display all available options:
 
-Replace all paths below with your own; they are placeholders only.
+```bash
+python -m image_pipeline.src.main --help
+```
 
-**Train**:
+### Train a model
 
 ```bash
 python -m image_pipeline.src.main --mode train --data-dir /path/to/dataset --output-dir /path/to/output --device auto --seed 42
 ```
 
-**Evaluate**:
+Training requires a dataset containing the `0`, `1`, and `2` class directories.
+
+### Evaluate a trained model
 
 ```bash
 python -m image_pipeline.src.main --mode evaluate --data-dir /path/to/dataset --checkpoint /path/to/best_model.pth --output-dir /path/to/output --device auto --seed 42
 ```
 
-**Predict** (single image):
+Evaluation applies the same deterministic loading and stratified splitting procedure to the supplied dataset. Metrics are calculated on the resulting test partition, which represents approximately 20% of the supplied images.
+
+When the same dataset and seed used for training are supplied, the command reconstructs the corresponding internal held-out test partition.
+
+### Predict a single image
 
 ```bash
 python -m image_pipeline.src.main --mode predict --image /path/to/image.jpg --checkpoint /path/to/best_model.pth --device auto --seed 42
 ```
 
-**Important -- what `--mode evaluate` actually does**: it does *not*
-evaluate every image found under `--data-dir`. It re-runs the exact
-same loading and image-level stratified split described in
-[Pipeline](#2-pipeline) (same `test_size=0.20`, `val_size=0.15`,
-`random_state=42` by default) against whatever `--data-dir` you supply,
-and then scores the model only on the resulting **test** partition
-(~20%) of that directory. If you point `--data-dir` at the same
-directory used for training, this reproduces the internal held-out test
-split. If you point it at a different directory, the code still splits
-it 65/15/20 and evaluates only the ~20% "test" slice of *that*
-directory -- it is not a pre-defined external validation set and should
-not be described as one.
+Available device options are:
 
-## 10. Output files
+* `auto`
+* `cpu`
+* `cuda`
 
-```
+The `auto` option uses CUDA when it is available and otherwise uses the CPU. Selecting `cuda` when CUDA is unavailable produces an explicit error.
+
+## 10. Output Files
+
+Training and evaluation artifacts are stored under the selected output directory:
+
+```text
 output-dir/
 ├── models/
 │   ├── best_model.pth
@@ -270,75 +307,68 @@ output-dir/
     └── class_performance.png
 ```
 
-These are runtime-generated artifacts. None of them are included in
-this repository.
+| File                        | Description                                           |
+| --------------------------- | ----------------------------------------------------- |
+| `best_model.pth`            | Model checkpoint with the highest validation accuracy |
+| `label_mapping.pkl`         | Mapping between numerical labels and class names      |
+| `training_history.png`      | Training and validation loss and accuracy curves      |
+| `classification_report.txt` | Precision, recall, F1-score, and support by class     |
+| `confusion_matrix.png`      | Test-set confusion matrix                             |
+| `class_performance.png`     | Class-level performance comparison                    |
 
-## 11. Reproducibility
+These files are generated at runtime and are not included in the repository.
 
-`--seed` (default `42`) is propagated to `Config.RANDOM_STATE` and used
-to seed:
+## 11. Reproducibility and Testing
 
-- Python's `random` module
-- NumPy
-- PyTorch (CPU and CUDA RNG)
-- the class-1 undersampling step
-- the train/validation/test split
-- the DataLoader generators and worker processes
+The default random seed is 42. The `--seed` argument controls:
 
-In addition, `torch.backends.cudnn.deterministic = True` and
-`torch.backends.cudnn.benchmark = False` are set.
+* Python random operations
+* NumPy random operations
+* PyTorch CPU random operations
+* PyTorch CUDA random operations
+* Class-1 undersampling
+* Train-validation-test splitting
+* DataLoader generators
+* DataLoader worker initialization
 
-This maximizes run-to-run consistency on the same machine, but bit-for-
-bit identical results across different hardware, CUDA versions, or
-library versions are not guaranteed.
+The pipeline also sets:
 
-## 12. Tests
+```python
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+```
 
-Run the image pipeline test suite with:
+These settings improve reproducibility on the same software and hardware environment. Exact numerical equivalence across different operating systems, hardware, CUDA versions, or dependency versions is not guaranteed.
+
+Run the image-pipeline tests without collecting the text-pipeline tests:
 
 ```bash
-python -m pytest -q tests/test_image_pipeline_*.py
+python -m pytest -q tests --ignore-glob="tests/test_text_pipeline_*.py"
 ```
 
-Last verified result (see the M0_IMG pipeline cleanup report for
-details):
+The tests cover:
 
-```
-69 passed, 0 failed, 0 skipped, 0 warnings
-```
+* Module imports
+* Configuration values
+* Command-line validation
+* Image discovery and class assignment
+* Image-level stratified splitting
+* Image transformations
+* Random-seed propagation
+* DataLoader reproducibility
+* ResNet-50 model structure
+* Pretrained-weight selection
+* Layer-freezing behavior
+* Focal Loss behavior
+* Path portability
+* Privacy and sensitive-file safeguards
 
-The test suite does not use real patient images, does not download
-ImageNet weights, and does not run a full training loop -- it uses
-programmatically generated, non-medical synthetic images, `pretrained=False`
-model construction (or a monkeypatched `torchvision.models.resnet50`),
-and source-level contract checks instead.
+The tests create temporary, non-medical solid-color images with Pillow. They do not use real patient images, download pretrained weights, execute a complete training run, or retain generated images after testing.
 
-## 13. Data and model availability
+## 12. Data and Model Availability
 
-- Research images are not publicly included in this repository.
-- Patient-level data are not publicly included in this repository.
-- Trained model checkpoints are not included in this repository.
-- Users must supply their own appropriately labeled images in the
-  structure described in [Dataset structure](#3-dataset-structure).
-- Do not commit sensitive medical images or identifiable filenames to a
-  public repository.
-- The repository's own tests generate only temporary, non-medical,
-  programmatically created images that are discarded at the end of each
-  test run.
+This repository does not include research images, patient data, trained model checkpoints, or patient-level predictions.
 
-## 14. Notes on method fidelity
+Users must provide their own authorized and appropriately labeled image data in the directory structure described above.
 
-- This public version preserves the model architecture, training
-  hyperparameters, image augmentation, data split logic, and checkpoint
-  selection rule that were actually in effect in M0_IMG.
-- The engineering cleanup performed to prepare this module for public
-  release was limited to: converting to relative package imports,
-  parameterizing paths through the CLI instead of hardcoded defaults,
-  adding explicit randomness control, consolidating configuration
-  values that previously lived only as hardcoded literals, and updating
-  a deprecated torchvision weights API call to its current equivalent.
-- The pretrained-weights API call now explicitly uses
-  `ResNet50_Weights.IMAGENET1K_V1` (rather than the newer `DEFAULT`,
-  which would resolve to `IMAGENET1K_V2`), preserving the same
-  ImageNet initialization semantics that the historical `pretrained=True`
-  call used.
+Sensitive medical images and identifiable filenames must not be committed to a public repository. The temporary images created by the test suite are artificial and are used only to verify the software interface.
