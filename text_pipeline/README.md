@@ -252,7 +252,7 @@ The default random seed is 42. The command-line `--seed` argument controls the r
 To run the text-pipeline test suite without collecting the image-pipeline tests:
 
 ```bash
-python -m pytest -q tests --ignore-glob="tests/test_image_pipeline_*.py"
+python -m pytest -q tests/test_text_pipeline_*.py
 ```
 
 The tests cover:

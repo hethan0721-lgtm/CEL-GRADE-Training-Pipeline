@@ -27,6 +27,11 @@ CEL-GRADE-Training-Pipeline/
 │   ├── requirements.txt
 │   ├── requirements-dev.txt
 │   └── src/
+├── evaluation/
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── image/
+│   └── text/
 ├── examples/
 │   └── synthetic_tabular_data/
 └── tests/
@@ -36,13 +41,15 @@ CEL-GRADE-Training-Pipeline/
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `text_pipeline/`                   | M0_CLIN XGBoost pipeline for training and evaluating structured clinical data                               |
 | `image_pipeline/`                  | M0_IMG ResNet-50 pipeline for image classification                                                          |
+| `evaluation/`                      | Standalone external-validation and bootstrap-confidence-interval tools for both pipelines                   |
 | `examples/synthetic_tabular_data/` | Artificially generated tabular data for demonstrating the text-pipeline input format and software interface |
-| `tests/`                           | Automated tests for the text and image pipelines                                                            |
+| `tests/`                           | Automated tests for the text and image pipelines, and for the evaluation module                             |
 
 Detailed information about input formats, model architectures, training parameters, command-line usage, and output files is available in the corresponding documentation:
 
 * [Text Pipeline Documentation](text_pipeline/README.md)
 * [Image Pipeline Documentation](image_pipeline/README.md)
+* [Evaluation Module Documentation](evaluation/README.md)
 * [Synthetic Tabular Data Documentation](examples/synthetic_tabular_data/README.md)
 
 ## Pipeline Overview
@@ -121,6 +128,14 @@ python -m pip install -r image_pipeline/requirements-dev.txt
 
 When running the image pipeline with CUDA, install mutually compatible versions of `torch` and `torchvision` for the local operating system and CUDA environment.
 
+### Evaluation Module Dependencies
+
+The evaluation module reuses both pipelines' own dependencies. Install them with:
+
+```bash
+python -m pip install -r evaluation/requirements.txt
+```
+
 ## Quick Start
 
 Run all commands from the repository root.
@@ -165,13 +180,19 @@ The image dataset must contain three class directories named `0`, `1`, and `2`. 
 ### Text Pipeline Tests
 
 ```bash
-python -m pytest -q tests --ignore-glob="tests/test_image_pipeline_*.py"
+python -m pytest -q tests/test_text_pipeline_*.py
 ```
 
 ### Image Pipeline Tests
 
 ```bash
-python -m pytest -q tests --ignore-glob="tests/test_text_pipeline_*.py"
+python -m pytest -q tests/test_image_pipeline_*.py
+```
+
+### Evaluation Tests
+
+```bash
+python -m pytest -q tests/test_image_external_validation.py tests/test_image_bootstrap_ci.py tests/test_text_external_validation.py tests/test_text_bootstrap_ci.py
 ```
 
 The automated tests cover:

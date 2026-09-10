@@ -343,7 +343,7 @@ These settings improve reproducibility on the same software and hardware environ
 Run the image-pipeline tests without collecting the text-pipeline tests:
 
 ```bash
-python -m pytest -q tests --ignore-glob="tests/test_text_pipeline_*.py"
+python -m pytest -q tests/test_image_pipeline_*.py
 ```
 
 The tests cover:

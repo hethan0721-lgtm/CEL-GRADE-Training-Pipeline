@@ -38,7 +38,7 @@ Run the training pipeline:
 ```bash
 python -m text_pipeline.src.main \
   --mode train \
-  --train-data examples/synthetic_tabular_data/synthetic_train.csv \
+  --input-data examples/synthetic_tabular_data/synthetic_train.csv \
   --external-data examples/synthetic_tabular_data/synthetic_external.csv
 ```
 

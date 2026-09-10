@@ -9,9 +9,12 @@ loads an already-trained checkpoint/model and an already-fitted
 preprocessor, and only ever calls their inference/transform interfaces
 (`model.eval()` + no-gradient inference for the image model;
 `FeatureEngineer.transform()` and `SurgeryClassifier.predict()` /
-`predict_proba()` for the text model). No tool in this module trains,
-fits, fine-tunes, resamples, or re-splits any dataset, and none of them
-generate plots or figures.
+`predict_proba()` for the text model). The external-validation tools do
+not train, fit, fine-tune, re-split, or resample the evaluation data. The
+bootstrap tools resample the already-computed prediction records (or
+groups of records) to compute confidence intervals; they do not train,
+fit, or perform any inference. None of the tools in this module generate
+plots or figures.
 
 This module ships no real data, no model weights, and no prediction
 results. Every input path is supplied by the caller via command-line
