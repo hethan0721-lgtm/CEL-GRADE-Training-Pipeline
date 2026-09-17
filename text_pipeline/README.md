@@ -59,18 +59,20 @@ The pipeline supports the following file formats:
 
 CSV files are read with UTF-8-compatible encoding. Excel files are read through the pandas Excel interface.
 
-Each input table must contain five model features and one binary target variable.
+Each input table must contain seven model features and one binary target variable, in the following fixed order (matching `Config.FEATURE_COLUMNS`):
 
-| Clinical variable                       | Data type     | Processing                                   |
-| --------------------------------------- | ------------- | -------------------------------------------- |
-| Dislocation severity                    | Categorical   | String cleaning and label encoding           |
-| Corrected visual acuity                 | Numerical     | Median imputation and standardization        |
-| Corrected spherical power in diopters   | Numerical     | Median imputation and standardization        |
-| Corrected cylindrical power in diopters | Numerical     | Median imputation and standardization        |
-| IOLMaster cylinder power in diopters    | Numerical     | Median imputation and standardization        |
-| Need for surgery                        | Binary target | Non-surgery is encoded as 0 and surgery as 1 |
+| Order | Clinical variable                       | Data type     | Processing |
+| ----- | ---------------------------------------- | ------------- | ---------- |
+| 1     | Corrected visual acuity                  | Numerical     | Median imputation and standardization |
+| 2     | Corrected spherical power in diopters    | Numerical     | Median imputation and standardization |
+| 3     | Corrected cylindrical power in diopters  | Numerical     | Median imputation and standardization |
+| 4     | IOLMaster cylinder power in diopters     | Numerical     | Median imputation and standardization |
+| 5     | Age                                      | Numerical     | Median imputation and standardization |
+| 6     | Cooperation with examination             | Categorical   | String cleaning and label encoding (values: `是` / `否`) |
+| 7     | Dislocation severity                     | Categorical   | String cleaning and label encoding (values: `中` / `轻` / `重`) |
+| --    | Need for surgery (target)                | Binary target | Non-surgery (`不手术`) is encoded as 0; surgery (`手术`) is encoded as 1. Surgery (1) is the positive class for all evaluation metrics, with a prediction decision threshold of 0.5 on the model's predicted probability of the positive class. |
 
-The exact machine-readable column names and raw label values are defined in `Config.FEATURE_COLUMNS`, `Config.TARGET_COLUMN`, and `Config.LABEL_MAPPING`. Input files must follow that schema. The bundled synthetic CSV files provide valid templates.
+The exact machine-readable column names and raw label values are defined in `Config.FEATURE_COLUMNS`, `Config.TARGET_COLUMN`, and `Config.LABEL_MAPPING`. Input files must follow that schema. The bundled synthetic CSV files provide valid templates. The synthetic files' Age and Cooperation-with-examination value distributions are illustrative placeholders only and do not represent any real clinical population.
 
 Only configured model features and the target variable enter the training matrix. Other columns are excluded from model fitting.
 
@@ -93,7 +95,7 @@ The preprocessing sequence is:
 11. Apply SMOTE only to the processed training partition.
 12. Fit the XGBoost classifier.
 
-Numerical features are median-imputed and standardized with `StandardScaler`. The categorical feature is encoded with `LabelEncoder`.
+Numerical features are median-imputed and standardized with `StandardScaler`. Categorical features are encoded with `LabelEncoder`.
 
 The fitted feature-processing components are saved with the trained model and reused during evaluation.
 
@@ -138,6 +140,7 @@ The pipeline separates model fitting from evaluation data processing.
 * SMOTE is fitted and applied only to the training partition.
 * The internal 20% test partition is processed with the fitted training preprocessor.
 * The external dataset is processed with the same fitted preprocessor.
+* Neither the internal 20% test partition nor the external dataset is passed to the classifier's `.fit()` call (including as an `eval_set` for training-log printouts) -- both are used exclusively for post-hoc evaluation, after the final model is already trained and saved. No early stopping is configured anywhere in this pipeline.
 * Internal and external evaluation modes do not refit the preprocessor or classifier.
 * Each cross-validation fold creates and fits independent preprocessing and resampling components.
 

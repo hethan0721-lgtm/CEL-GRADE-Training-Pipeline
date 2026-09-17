@@ -150,6 +150,16 @@ def run_train(config, output_dir, verbose=True):
     # ---- Step 3: Train model ----
     _print_header("[Step 3/4] Model Training")
 
+    # pass_eval_set_to_fit=False: the internal 20% test set is stored via
+    # trainer.set_external_val_data() for informational purposes only and is
+    # NEVER forwarded into SurgeryClassifier.fit()'s eval_set -- it reaches
+    # the model exclusively at Step 4 (post-hoc evaluation only, after the
+    # model is already trained/saved). The external validation set never
+    # enters train_pipeline() at all. This does not change which data trains
+    # the final model, SMOTE, class weighting, hyperparameters, or the 0.5
+    # decision threshold -- it only removes an eval_set data-flow path that
+    # had no effect on trained weights (no early stopping is configured) but
+    # was unnecessarily confusing to read.
     model, trainer = train_pipeline(
         X_train_80, y_train_80,
         apply_smote=True,
@@ -158,6 +168,7 @@ def run_train(config, output_dir, verbose=True):
         verbose=verbose,
         X_val_external=X_test_20,
         y_val_external=y_test_20,
+        pass_eval_set_to_fit=False,
         cv_raw_data=train_data_80,
         config=config
     )

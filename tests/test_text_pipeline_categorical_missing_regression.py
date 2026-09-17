@@ -22,7 +22,7 @@ from text_pipeline.src.feature_engineering import FeatureEngineer
 
 
 def _frame_with_missing_dislocation(n=30, missing_fraction=0.3):
-    dislocation = np.array((['轻度', '中度', '重度'] * n)[:n], dtype=object)
+    dislocation = np.array((['轻', '中', '重'] * n)[:n], dtype=object)
     n_missing = int(n * missing_fraction)
     dislocation[:n_missing] = np.nan
 
@@ -32,6 +32,8 @@ def _frame_with_missing_dislocation(n=30, missing_fraction=0.3):
         '矫正球镜度数(D)': [-1.0] * n,
         '矫正柱镜度数(D)': [-0.5] * n,
         'IOLMaster-Cyl(D)': [1.0] * n,
+        '年龄': [50.0] * n,
+        '是否配合检查': (['是', '否'] * n)[:n],
         '是否需要手术': (['手术', '不手术'] * n)[:n],
     })
 

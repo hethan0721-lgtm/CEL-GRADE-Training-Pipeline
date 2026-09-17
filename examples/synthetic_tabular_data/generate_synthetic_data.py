@@ -9,14 +9,19 @@ copied, or derived from any real patient record.
 Column names and dtypes mirror ``text_pipeline.src.config.Config`` so the
 files can be fed directly to ``text_pipeline/src/main.py`` (train,
 internal-eval, external-eval). Only the columns the canonical model actually
-uses are emitted: an anonymous ``sample_id``, the 5 canonical features
-(``脱位程度`` + 4 numeric columns -- see ``Config.FEATURE_COLUMNS``), and the
-target column. The historical, never-used ``是否配合``/``年龄`` columns are
-deliberately NOT included in the public example data; DataLoader's
-tolerance for such extra/legacy columns (they are silently dropped and
-never reach the model) is covered separately by a synthetic, in-test-only
-DataFrame in tests/test_text_pipeline_input_validation.py -- it does not
-need to be demonstrated via checked-in example files.
+uses are emitted: an anonymous ``sample_id``, the 7 canonical features
+(``是否配合检查`` + ``脱位程度`` + 5 numeric columns, including ``年龄`` --
+see ``Config.FEATURE_COLUMNS``), and the target column. DataLoader's
+tolerance for extra/legacy columns outside this whitelist (they are
+silently dropped and never reach the model) is covered separately by a
+synthetic, in-test-only DataFrame in
+tests/test_text_pipeline_input_validation.py -- it does not need to be
+demonstrated via checked-in example files.
+
+The synthetic ``年龄`` and ``是否配合检查`` distributions below (age range,
+是/否 split) are illustrative placeholders chosen only so the demo data
+exercises both the numerical and categorical preprocessing paths -- they do
+not represent any real clinical population and must not be read as such.
 
 Outputs (CSV -- .xlsx is not used for the public examples because the
 repository's root .gitignore excludes *.xlsx but allow-lists
@@ -38,7 +43,7 @@ import pandas as pd
 # and independent from Config.RANDOM_STATE (the model-training seed).
 EXAMPLE_DATA_SEED = 12345
 
-DISLOCATION_LEVELS = ['轻度', '中度', '重度']  # mild / moderate / severe (fictitious)
+DISLOCATION_LEVELS = ['轻', '中', '重']  # mild / moderate / severe (matches the real model's category values)
 
 OUTPUT_DIR = Path(__file__).resolve().parent
 
@@ -88,13 +93,21 @@ def _generate_frame(rng, n_rows, id_prefix, positive_rate_target):
     spherical_power = np.clip(rng.normal(-4.0, 4.0, size=n_rows), -20.0, 4.0)
     cylindrical_power = np.clip(rng.normal(-1.5, 1.2, size=n_rows), -6.0, 0.0)
     iolmaster_cyl = np.clip(rng.uniform(0.0, 4.0, size=n_rows), 0.0, 6.0)
+    # Illustrative synthetic-only range (not derived from any real clinical
+    # population) -- see module docstring.
+    age = np.clip(rng.integers(1, 86, size=n_rows), 1, 85)
+    # Illustrative synthetic-only split (是=80% / 否=20%), not derived from
+    # any real clinical population -- see module docstring.
+    cooperation = rng.choice(['是', '否'], size=n_rows, p=[0.8, 0.2])
 
     # Purely illustrative synthetic relationship (NOT a medical claim) so the
     # demo data produces a non-degenerate mix of both classes: more severe
     # dislocation + worse (lower) corrected vision nudges the fictitious
-    # surgery probability upward.
+    # surgery probability upward. 年龄/是否配合检查 flow through the pipeline
+    # like the other features above but do not need to participate in this
+    # illustrative label formula.
     severity_score = np.select(
-        [dislocation == '轻度', dislocation == '中度', dislocation == '重度'],
+        [dislocation == '轻', dislocation == '中', dislocation == '重'],
         [0.0, 0.35, 0.7]
     )
     vision_score = 1.0 - corrected_vision  # worse vision -> higher score
@@ -109,11 +122,13 @@ def _generate_frame(rng, n_rows, id_prefix, positive_rate_target):
 
     df = pd.DataFrame({
         'sample_id': [f"{id_prefix}-{i+1:04d}" for i in range(n_rows)],
-        '脱位程度': _make_categorical_with_missing(rng, dislocation),
         '矫正视力': _make_numeric_with_artifacts(rng, corrected_vision),
         '矫正球镜度数(D)': _make_numeric_with_artifacts(rng, spherical_power),
         '矫正柱镜度数(D)': _make_numeric_with_artifacts(rng, cylindrical_power),
         'IOLMaster-Cyl(D)': _make_numeric_with_artifacts(rng, iolmaster_cyl),
+        '年龄': _make_numeric_with_artifacts(rng, age.astype(float)),
+        '是否配合检查': _make_categorical_with_missing(rng, cooperation),
+        '脱位程度': _make_categorical_with_missing(rng, dislocation),
         '是否需要手术': target,
     })
     return df

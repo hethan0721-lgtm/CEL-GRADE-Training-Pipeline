@@ -25,42 +25,46 @@ class Config:
     PRESERVE_COLUMNS = ['姓名', '身份证号', '省份']
 
     # Categorical features actually used by FeatureEngineer/the trained model.
-    CATEGORICAL_FEATURES = ['脱位程度']
+    CATEGORICAL_FEATURES = ['是否配合检查', '脱位程度']
 
     # Numerical features actually used by FeatureEngineer/the trained model.
     NUMERICAL_FEATURES = [
         '矫正视力',
         '矫正球镜度数(D)',
         '矫正柱镜度数(D)',
-        'IOLMaster-Cyl(D)'
+        'IOLMaster-Cyl(D)',
+        '年龄'
     ]
 
-    # Canonical feature whitelist: the 5 features that actually reach the
-    # trained XGBoost model (CATEGORICAL_FEATURES + NUMERICAL_FEATURES).
-    # `是否配合` and `年龄` are deliberately NOT listed here -- they never
-    # entered the historical canonical model, and must not be added back.
-    # `DataLoader` drops any input column that is not in this list (and not
-    # in PRESERVE_COLUMNS), so an input spreadsheet MAY contain extra
-    # columns (是否配合, 年龄, legacy identifiers, etc.) for backward
-    # compatibility with older raw files -- they are simply ignored and can
-    # never reach the model.
+    # Canonical feature whitelist: the 7 features that actually reach the
+    # trained XGBoost model, in the fixed order used by the canonical
+    # M0_CLIN model (矫正视力, 矫正球镜度数(D), 矫正柱镜度数(D),
+    # IOLMaster-Cyl(D), 年龄, 是否配合检查, 脱位程度). `DataLoader` drops
+    # any input column that is not in this list (and not in
+    # PRESERVE_COLUMNS), so an input spreadsheet MAY contain extra columns
+    # (legacy identifiers, etc.) for backward compatibility with older raw
+    # files -- they are simply ignored and can never reach the model.
     FEATURE_COLUMNS = [
-        '脱位程度',
         '矫正视力',
         '矫正球镜度数(D)',
         '矫正柱镜度数(D)',
-        'IOLMaster-Cyl(D)'
+        'IOLMaster-Cyl(D)',
+        '年龄',
+        '是否配合检查',
+        '脱位程度'
     ]
 
     # Feature importance order (must match FEATURE_COLUMNS -- see the note above).
     FEATURE_WEIGHT_INFO = {
         'description': 'Feature importance ranking',
         'order': [
-            '脱位程度',
             '矫正视力',
             '矫正球镜度数(D)',
             '矫正柱镜度数(D)',
-            'IOLMaster-Cyl(D)'
+            'IOLMaster-Cyl(D)',
+            '年龄',
+            '是否配合检查',
+            '脱位程度'
         ]
     }
 
@@ -83,11 +87,13 @@ class Config:
 
     # Chinese to English feature name mapping for plotting
     FEATURE_NAME_MAPPING = {
-        '脱位程度': 'Dislocation Degree',
         '矫正视力': 'Corrected Vision',
         '矫正球镜度数(D)': 'Spherical Power(D)',
         '矫正柱镜度数(D)': 'Cylindrical Power(D)',
-        'IOLMaster-Cyl(D)': 'IOLMaster-Cyl(D)'
+        'IOLMaster-Cyl(D)': 'IOLMaster-Cyl(D)',
+        '年龄': 'Age',
+        '是否配合检查': 'Cooperation with Examination',
+        '脱位程度': 'Dislocation Degree'
     }
 
     # Preprocessing.

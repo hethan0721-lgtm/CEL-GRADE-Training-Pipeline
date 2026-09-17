@@ -600,6 +600,7 @@ class ModelTrainer:
 def train_pipeline(X, y, apply_smote=True, hyperparameter_tuning=False,
                    cross_validation=False, verbose=True,
                    X_val_external=None, y_val_external=None,
+                   pass_eval_set_to_fit=False,
                    cv_raw_data=None, config=None):
     """
     End-to-end training pipeline with optional SMOTE, tuning, and CV.
@@ -613,6 +614,30 @@ def train_pipeline(X, y, apply_smote=True, hyperparameter_tuning=False,
         verbose: Whether to print progress information.
         X_val_external: 外部验证集特征（可选，用于验证和评估）
         y_val_external: 外部验证集标签（可选）
+        pass_eval_set_to_fit: When ``X_val_external``/``y_val_external`` are
+            provided, controls only whether they are ALSO forwarded to
+            ``ModelTrainer.train_model()`` (and from there into
+            ``SurgeryClassifier.fit(..., X_val=, y_val=)``, which builds an
+            ``eval_set`` for XGBoost's per-round training-log printout).
+            Set to ``False`` to keep ``trainer.set_external_val_data()``
+            (informational storage only, never read by any other production
+            code path) while ensuring the caller's val/test data never
+            reaches ``.fit()`` at all. Does NOT affect which rows train the
+            final model (``X_train``/``y_train`` are always ``X``/``y``
+            unchanged), SMOTE, class weighting, or hyperparameters. Since no
+            early stopping is configured anywhere in this pipeline
+            (``models.py`` never passes ``early_stopping_rounds`` to the
+            underlying estimator), ``eval_set`` has zero effect on the
+            trained weights in either case -- this flag only removes an
+            unnecessary/confusing data-flow path, it does not change model
+            behaviour. Defaults to ``False`` so that any future caller which
+            provides ``X_val_external``/``y_val_external`` without thinking
+            about this flag gets the safe behaviour (validation/test data
+            never reaches ``.fit()``) automatically, rather than silently
+            reintroducing the eval_set data-flow this flag exists to avoid.
+            Every current call site (the production path in ``main.py`` and
+            the test suite) already passes ``False`` explicitly and is
+            unaffected by this default.
         cv_raw_data: 可选，特征工程之前的原始（已清洗）80% 训练集 DataFrame
             （含 target 列）。提供时，cross-validation 使用
             ``ModelTrainer.cross_validate_pipeline()``，在每个 fold 内独立
@@ -671,10 +696,15 @@ def train_pipeline(X, y, apply_smote=True, hyperparameter_tuning=False,
         best_model, best_params = trainer.hyperparameter_tuning(X_train, y_train, verbose=verbose)
         trainer.model = best_model
     else:
-        # Standard training path
+        # Standard training path.
+        # X_val/y_val are only forwarded to train_model() (and from there
+        # into the model's .fit(eval_set=...)) when pass_eval_set_to_fit is
+        # True. Whichever branch above set X_train/y_train is unaffected --
+        # this only controls the optional eval_set argument.
         model = trainer.train_model(
             X_train, y_train,
-            X_val, y_val,
+            X_val if pass_eval_set_to_fit else None,
+            y_val if pass_eval_set_to_fit else None,
             apply_smote=apply_smote,
             verbose=verbose
         )

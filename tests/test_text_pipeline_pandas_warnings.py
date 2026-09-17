@@ -21,11 +21,13 @@ def _frame_with_missing_values(n=20):
     # missing cell read from CSV/Excel -- str(np.nan) == "nan", which is the
     # exact literal-string behaviour under test here.
     return pd.DataFrame({
-        '脱位程度': (['轻度', np.nan, '重度'] * n)[:n],
+        '脱位程度': (['轻', np.nan, '重'] * n)[:n],
         '矫正视力': ([0.5, np.nan, 0.7] * n)[:n],
         '矫正球镜度数(D)': [-1.0] * n,
         '矫正柱镜度数(D)': [-0.5] * n,
         'IOLMaster-Cyl(D)': [1.0] * n,
+        '年龄': [50.0] * n,
+        '是否配合检查': (['是', '否'] * n)[:n],
         '姓名': ['someone'] * n,
         '是否需要手术': (['手术', '不手术'] * n)[:n],
     })

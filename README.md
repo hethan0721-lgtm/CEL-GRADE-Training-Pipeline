@@ -56,7 +56,7 @@ Detailed information about input formats, model architectures, training paramete
 
 ### M0_CLIN: Structured Clinical Data Model
 
-M0_CLIN uses five structured clinical features to train an XGBoost binary classifier.
+M0_CLIN uses seven structured clinical features to train an XGBoost binary classifier.
 
 The main workflow includes:
 
