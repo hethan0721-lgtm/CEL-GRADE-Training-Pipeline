@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-This module provides an end-to-end pipeline for training and evaluating a binary XGBoost classifier that predicts the need for surgery from structured clinical variables.
+This module provides an end-to-end pipeline for training and evaluating a binary XGBoost classifier that predicts whether surgery is required from structured clinical variables.
 
 The pipeline includes:
 
@@ -40,8 +40,8 @@ text_pipeline/
 | File                     | Description                                                                                       |
 | ------------------------ | ------------------------------------------------------------------------------------------------- |
 | `config.py`              | Defines the input schema, preprocessing settings, model parameters, random seed, and output paths |
-| `data_loader.py`         | Loads, validates, filters, and cleans tabular input data                                          |
-| `feature_engineering.py` | Applies imputation, scaling, and categorical encoding                                             |
+| `data_loader.py`         | Loads, selects, and cleans tabular input data                                                     |
+| `feature_engineering.py` | Applies numerical imputation, scaling, and categorical encoding                                   |
 | `models.py`              | Defines the XGBoost classifier interface                                                          |
 | `train.py`               | Performs SMOTE, class-weight calculation, model fitting, and cross-validation                     |
 | `evaluate.py`            | Computes evaluation metrics and generates plots and reports                                       |
@@ -51,53 +51,76 @@ The `outputs/` directory is created at runtime and is excluded from version cont
 
 ## 3. Input Data
 
-The pipeline supports the following file formats:
+The documented runtime dependencies support the following formats:
 
 * `.csv`
 * `.xlsx`
-* `.xls`
 
-CSV files are read with UTF-8-compatible encoding. Excel files are read through the pandas Excel interface.
+The data-loading code also recognizes legacy `.xls` files. Reading `.xls` files may require the optional `xlrd` package, which is not included in the default runtime requirements.
 
-Each input table must contain seven model features and one binary target variable, in the following fixed order (matching `Config.FEATURE_COLUMNS`):
+CSV files are read using UTF-8-compatible encoding. Excel files are read through the pandas Excel interface.
 
-| Order | Clinical variable                       | Data type     | Processing |
-| ----- | ---------------------------------------- | ------------- | ---------- |
-| 1     | Corrected visual acuity                  | Numerical     | Median imputation and standardization |
-| 2     | Corrected spherical power in diopters    | Numerical     | Median imputation and standardization |
-| 3     | Corrected cylindrical power in diopters  | Numerical     | Median imputation and standardization |
-| 4     | IOLMaster cylinder power in diopters     | Numerical     | Median imputation and standardization |
-| 5     | Age                                      | Numerical     | Median imputation and standardization |
-| 6     | Cooperation with examination             | Categorical   | String cleaning and label encoding (values: `是` / `否`) |
-| 7     | Dislocation severity                     | Categorical   | String cleaning and label encoding (values: `中` / `轻` / `重`) |
-| --    | Need for surgery (target)                | Binary target | Non-surgery (`不手术`) is encoded as 0; surgery (`手术`) is encoded as 1. Surgery (1) is the positive class for all evaluation metrics, with a prediction decision threshold of 0.5 on the model's predicted probability of the positive class. |
+Each input table must contain seven model features and one binary target variable.
 
-The exact machine-readable column names and raw label values are defined in `Config.FEATURE_COLUMNS`, `Config.TARGET_COLUMN`, and `Config.LABEL_MAPPING`. Input files must follow that schema. The bundled synthetic CSV files provide valid templates. The synthetic files' Age and Cooperation-with-examination value distributions are illustrative placeholders only and do not represent any real clinical population.
+| Model order | Clinical variable                       | Data type     | Processing                                               |
+| ----------- | --------------------------------------- | ------------- | -------------------------------------------------------- |
+| 1           | Corrected visual acuity                 | Numerical     | Median imputation and standardization                    |
+| 2           | Corrected spherical power in diopters   | Numerical     | Median imputation and standardization                    |
+| 3           | Corrected cylindrical power in diopters | Numerical     | Median imputation and standardization                    |
+| 4           | IOLMaster cylinder power in diopters    | Numerical     | Median imputation and standardization                    |
+| 5           | Age                                     | Numerical     | Median imputation and standardization                    |
+| 6           | Cooperation with examination            | Categorical   | String cleaning and label encoding                       |
+| 7           | Dislocation severity                    | Categorical   | String cleaning and label encoding                       |
+| Target      | Need for surgery                        | Binary target | Non-surgery is encoded as 0, and surgery is encoded as 1 |
 
-Only configured model features and the target variable enter the training matrix. Other columns are excluded from model fitting.
+Class 1 is the positive class for all binary evaluation metrics. The prediction decision threshold is 0.5 on the model's estimated probability of class 1.
 
-Rows with missing or unsupported target values are removed before training. Rows in which all numerical model features are missing are also removed.
+The exact machine-readable column names, accepted categorical values, target labels, and label mappings are defined in:
+
+* `Config.FEATURE_COLUMNS`
+* `Config.NUMERICAL_FEATURES`
+* `Config.CATEGORICAL_FEATURES`
+* `Config.TARGET_COLUMN`
+* `Config.LABEL_MAPPING`
+
+The bundled synthetic CSV files provide valid input templates.
+
+Input files do not need to place their columns in the model's fixed feature order. Columns are selected by their machine-readable names and then reordered internally according to `Config.FEATURE_COLUMNS` before they enter the model.
+
+All seven configured feature columns and the target column must be present. Additional columns, including anonymous sample identifiers, are excluded from the final model feature matrix.
+
+Target values must belong to the supported label set defined in `Config.LABEL_MAPPING`. Missing or unsupported target values are not valid training inputs and should be corrected or removed before the pipeline is run.
+
+Rows in which every numerical model feature is missing or invalid should also be reviewed before training. Numerical imputation supports individual missing feature values, but callers should not rely on every execution path to silently remove rows containing no valid numerical information.
 
 ## 4. Preprocessing Pipeline
 
 The preprocessing sequence is:
 
-1. Retain the configured feature and target columns.
-2. Clean numerical values and convert them to floating-point values.
-3. Convert unparseable numerical values to `NaN`.
-4. Clean categorical values and convert them to strings.
-5. Convert categorical missing values into an explicit `nan` category.
-6. Remove rows with missing or unsupported target values.
-7. Encode the binary target.
-8. Create a stratified 80/20 train-test split.
-9. Fit the feature-processing objects on the 80% training partition.
-10. Apply the fitted processing objects to the internal test partition and external dataset.
-11. Apply SMOTE only to the processed training partition.
-12. Fit the XGBoost classifier.
+1. Load the training and external evaluation tables.
+2. Select the configured feature and target columns.
+3. Reorder the model features according to `Config.FEATURE_COLUMNS`.
+4. Clean numerical values and convert them to floating-point values.
+5. Convert unparseable numerical values to missing values.
+6. Trim categorical strings and standardize their in-memory representation.
+7. Convert categorical missing values into an explicit `nan` string category.
+8. Encode the binary target using the configured label mapping.
+9. Create a stratified 80/20 training and internal test split.
+10. Fit all feature-processing objects on the 80% training partition only.
+11. Transform the internal test partition and external dataset using the fitted training preprocessor.
+12. Apply SMOTE only to the processed training partition.
+13. Fit the XGBoost classifier.
+14. Evaluate the saved model on the internal test partition and external dataset.
 
-Numerical features are median-imputed and standardized with `StandardScaler`. Categorical features are encoded with `LabelEncoder`.
+Numerical features are median-imputed and standardized with `StandardScaler`.
 
-The fitted feature-processing components are saved with the trained model and reused during evaluation.
+Categorical features are cleaned as strings and encoded with `LabelEncoder`.
+
+The current pipeline intentionally preserves its historical categorical missing-value behavior. A missing categorical value is converted into the literal string `nan` before categorical encoding. It is therefore treated as an explicit category rather than being replaced with the most frequent category.
+
+Changing this behavior would alter the fitted preprocessing objects and could change model predictions. It should therefore be treated as a separate model-behavior change rather than a documentation-only modification.
+
+The fitted feature-processing components are saved with the trained model and reused during internal and external evaluation.
 
 ## 5. Training Configuration
 
@@ -118,7 +141,9 @@ The classifier uses a fixed XGBoost configuration.
 | L2 regularization      |               1.0 |
 | Default random seed    |                42 |
 
-The model is trained for 200 estimators without early stopping. Automated hyperparameter search is not part of the training workflow.
+The model is trained for 200 estimators without early stopping.
+
+Automated hyperparameter search is not part of the production training workflow.
 
 SMOTE is applied only to the training partition with:
 
@@ -126,9 +151,11 @@ SMOTE is applied only to the training partition with:
 * `k_neighbors=5`
 * Default random seed of 42
 
-Balanced class weights are calculated from the resampled training labels and converted to `scale_pos_weight` for XGBoost.
+Balanced class weights are calculated from the resampled training labels and converted into the `scale_pos_weight` value used by XGBoost.
 
-Five-fold stratified cross-validation is performed for internal diagnostic evaluation. Each fold independently fits its preprocessing components and applies SMOTE only to the training rows of that fold. Cross-validation does not select model hyperparameters or replace the final fitted model.
+Five-fold stratified cross-validation is performed for internal diagnostic evaluation. Each fold independently fits its preprocessing components and applies SMOTE only to the training rows of that fold.
+
+Cross-validation is not used to select hyperparameters and does not replace the final fitted model.
 
 ## 6. Data Leakage Prevention
 
@@ -138,31 +165,41 @@ The pipeline separates model fitting from evaluation data processing.
 * Numerical imputation and standardization are fitted only on the 80% training partition.
 * Categorical encoding is fitted only on the 80% training partition.
 * SMOTE is fitted and applied only to the training partition.
-* The internal 20% test partition is processed with the fitted training preprocessor.
-* The external dataset is processed with the same fitted preprocessor.
-* Neither the internal 20% test partition nor the external dataset is passed to the classifier's `.fit()` call (including as an `eval_set` for training-log printouts) -- both are used exclusively for post-hoc evaluation, after the final model is already trained and saved. No early stopping is configured anywhere in this pipeline.
+* The internal 20% test partition is transformed using the preprocessor fitted on the training partition.
+* The external dataset is transformed using the same fitted training preprocessor.
+* Neither the internal test partition nor the external dataset is passed to the classifier's `.fit()` call.
+* Neither evaluation dataset is used as an `eval_set` during final model fitting.
+* No early stopping is configured in the production training workflow.
 * Internal and external evaluation modes do not refit the preprocessor or classifier.
 * Each cross-validation fold creates and fits independent preprocessing and resampling components.
 
-Automated leakage checks are provided in `tests/test_text_pipeline_leakage_guard.py`.
+Automated leakage checks are provided in `tests/test_text_pipeline_leakage_guard.py` and the related text-pipeline validation tests.
 
 ## 7. Installation
 
 Run all commands from the repository root.
 
-Install runtime dependencies:
+Python 3.9 or later is required. The pipeline was developed and tested primarily with Python 3.11.
+
+Install the runtime dependencies:
 
 ```bash
-pip install -r text_pipeline/requirements.txt
+python -m pip install -r text_pipeline/requirements.txt
 ```
 
-Install runtime and development dependencies:
+Install the runtime and development dependencies:
 
 ```bash
-pip install -r text_pipeline/requirements-dev.txt
+python -m pip install -r text_pipeline/requirements-dev.txt
 ```
 
 The development requirements include the runtime dependencies and `pytest`.
+
+To read legacy `.xls` files, install the optional Excel dependency separately:
+
+```bash
+python -m pip install xlrd
+```
 
 ## 8. Command-Line Usage
 
@@ -183,48 +220,66 @@ python -m text_pipeline.src.main --mode train
 ### Train with custom data
 
 ```bash
-python -m text_pipeline.src.main --mode train --input-data /path/to/training_data.csv --external-data /path/to/external_data.csv --output-dir /path/to/outputs --seed 42
+python -m text_pipeline.src.main \
+  --mode train \
+  --input-data /path/to/training_data.csv \
+  --external-data /path/to/external_data.csv \
+  --output-dir /path/to/outputs \
+  --seed 42
 ```
 
-The same command structure can be used with `.xlsx` or `.xls` input files.
+The same command structure can be used with `.xlsx` input files. Legacy `.xls` input requires an appropriate optional Excel engine.
 
 ### Reproduce the internal evaluation
 
 ```bash
-python -m text_pipeline.src.main --mode internal-eval --input-data /path/to/training_data.csv --output-dir /path/to/outputs --seed 42
+python -m text_pipeline.src.main \
+  --mode internal-eval \
+  --input-data /path/to/training_data.csv \
+  --output-dir /path/to/outputs \
+  --seed 42
 ```
 
-The input file and seed must match the training run so that the same internal 20% test partition is reconstructed.
+The input file and seed must match the training run so that the same internal 20% test partition can be reconstructed.
 
 ### Evaluate an external dataset
 
 ```bash
-python -m text_pipeline.src.main --mode external-eval --input-data /path/to/external_data.csv --output-dir /path/to/outputs
+python -m text_pipeline.src.main \
+  --mode external-eval \
+  --input-data /path/to/external_data.csv \
+  --output-dir /path/to/outputs
 ```
 
-External evaluation loads the saved model and fitted feature processor. It does not retrain or refit any component.
+External evaluation loads the saved model and fitted feature processor. It does not retrain the model or refit any preprocessing component.
 
 ## 9. Outputs
 
-The default output directory is `text_pipeline/outputs/`.
+The default output directory is:
 
-### Model artifacts
+```text
+text_pipeline/outputs/
+```
+
+### Model Artifacts
 
 The following files are saved under `<output-dir>/models/`:
 
 | File                     | Description                                                                                                      |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `feature_engineer.pkl`   | Fitted preprocessing components and feature metadata                                                             |
-| `best_xgboost_model.pkl` | Trained XGBoost model, feature names, and feature importance values                                              |
+| `best_xgboost_model.pkl` | Trained XGBoost model, feature names, and feature-importance values                                              |
 | `training_history.pkl`   | Training duration, sample counts, resampling information, class-weight information, and cross-validation results |
 
-### Evaluation outputs
+### Internal Evaluation Outputs
 
 Internal evaluation results are saved under:
 
 ```text
 <output-dir>/eval_internal/
 ```
+
+### External Evaluation Outputs
 
 External evaluation results are saved under:
 
@@ -238,21 +293,25 @@ Generated evaluation files include:
 * Confusion matrix
 * Receiver operating characteristic curve
 * Precision-recall curve
-* Feature importance plot
-* Metrics comparison plot
+* Feature-importance plot
+* Metrics-comparison plot
 
 Evaluation outputs contain aggregate metrics and plots. They do not contain raw input rows or row-level prediction files.
 
 ## 10. Reproducibility and Testing
 
-The default random seed is 42. The command-line `--seed` argument controls the random state used by:
+The default random seed is 42.
+
+The command-line `--seed` argument controls the random state used by:
 
 * The stratified train-test split
 * SMOTE
 * XGBoost
 * Cross-validation
 
-To run the text-pipeline test suite without collecting the image-pipeline tests:
+Fixed random seeds improve reproducibility within the same software and hardware environment. Exact numerical equivalence across different operating systems, dependency versions, processors, or numerical libraries is not guaranteed.
+
+Run the text-pipeline test suite without collecting the image-pipeline tests:
 
 ```bash
 python -m pytest -q tests/test_text_pipeline_*.py
@@ -261,20 +320,57 @@ python -m pytest -q tests/test_text_pipeline_*.py
 The tests cover:
 
 * Module imports
-* Input schema validation
+* Seven-feature input schema validation
+* Fixed feature order
 * Synthetic data loading
 * Feature-set consistency
+* Anonymous identifier exclusion
+* Target exclusion from the feature matrix
 * Data leakage prevention
 * Categorical missing-value handling
-* Fixed training parameters
+* Unseen categorical-value behavior
+* Fixed model parameters
+* Training-only SMOTE behavior
+* Internal test isolation
 * Path portability
 * Privacy safeguards
 * End-to-end execution with synthetic data
 
+The test suite uses synthetic data only. It does not require or access real clinical data.
+
 ## 11. Data and Model Availability
 
-This repository does not include real patient data, real patient-level predictions, or trained model weights.
+This repository does not include:
 
-The files in [`examples/synthetic_tabular_data/`](../examples/synthetic_tabular_data/) are artificially generated and are provided only to demonstrate the expected input structure and test the software interface. They are not derived from a real patient population and must not be used to estimate clinical performance.
+* Real patient data
+* Identifiable clinical information
+* Real patient-level predictions
+* Trained model weights
+* Fitted preprocessing artifacts
+* Clinical performance results derived from private datasets
 
-Users must provide their own authorized data in the required schema when running the pipeline on research datasets. Sensitive or identifiable clinical data must not be committed to a public repository.
+The files in [`examples/synthetic_tabular_data/`](../examples/synthetic_tabular_data/) are generated entirely by software. They are provided only to demonstrate the expected input structure, verify the software interface, and support automated testing.
+
+The synthetic files are not derived from a real patient population. They must not be used to estimate clinical performance, validate a medical hypothesis, or draw scientific conclusions.
+
+Users must provide their own authorized data in the required schema when running the pipeline on research datasets.
+
+Sensitive, restricted, or identifiable clinical data must not be committed to a public repository.
+
+## 12. Intended Use and Limitations
+
+This software is provided for research and reproducibility purposes.
+
+It is not a certified medical device and must not be used as the sole basis for diagnosis, treatment selection, surgical decision-making, or other direct clinical decisions.
+
+Users are responsible for:
+
+* Verifying the input schema
+* Confirming data quality
+* Confirming that all target labels are valid
+* Reviewing missing or invalid feature values
+* Protecting sensitive information
+* Obtaining all required institutional and ethical approvals
+* Validating model performance on an appropriate target population
+
+Results obtained from user-provided data may vary because of differences in population characteristics, data collection procedures, software versions, hardware, and preprocessing decisions.
