@@ -56,7 +56,7 @@ The documented runtime dependencies support the following formats:
 * `.csv`
 * `.xlsx`
 
-The data-loading code also recognizes legacy `.xls` files. Reading `.xls` files may require the optional `xlrd` package, which is not included in the default runtime requirements.
+The data-loading code also recognizes legacy `.xls` files. Reading `.xls` files uses the `xlrd` package included in the default runtime requirements.
 
 CSV files are read using UTF-8-compatible encoding. Excel files are read through the pandas Excel interface.
 
@@ -195,11 +195,7 @@ python -m pip install -r text_pipeline/requirements-dev.txt
 
 The development requirements include the runtime dependencies and `pytest`.
 
-To read legacy `.xls` files, install the optional Excel dependency separately:
-
-```bash
-python -m pip install xlrd
-```
+The runtime requirements include `openpyxl` for `.xlsx` files and `xlrd` for legacy `.xls` files.
 
 ## 8. Command-Line Usage
 
@@ -228,7 +224,7 @@ python -m text_pipeline.src.main \
   --seed 42
 ```
 
-The same command structure can be used with `.xlsx` input files. Legacy `.xls` input requires an appropriate optional Excel engine.
+The same command structure can be used with `.xlsx` input files. Legacy `.xls` input is supported through the included `xlrd` dependency.
 
 ### Reproduce the internal evaluation
 

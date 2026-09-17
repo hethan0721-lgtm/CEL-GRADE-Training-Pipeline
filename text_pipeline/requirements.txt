@@ -21,5 +21,6 @@ numpy>=1.21.0
 matplotlib>=3.4.0
 seaborn>=0.11.0
 
-# Excel I/O engine used by pandas.read_excel()/to_excel() for .xlsx/.xls files
-openpyxl>=3.0.7
+# Excel I/O engines used by pandas.read_excel()/to_excel()
+openpyxl>=3.0.7  # required for reading/writing .xlsx files
+xlrd>=2.0.1       # required for reading legacy .xls files
