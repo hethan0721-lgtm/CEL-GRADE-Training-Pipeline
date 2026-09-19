@@ -1,0 +1,53 @@
+{
+  "numerical_features": [
+    "矫正视力",
+    "矫正球镜度数(D)",
+    "矫正柱镜度数(D)",
+    "IOLMaster-Cyl(D)",
+    "年龄"
+  ],
+  "categorical_features": [
+    "是否配合检查",
+    "脱位程度"
+  ],
+  "feature_columns_whitelist": [
+    "是否配合检查",
+    "脱位程度",
+    "矫正视力",
+    "矫正球镜度数(D)",
+    "矫正柱镜度数(D)",
+    "IOLMaster-Cyl(D)",
+    "年龄"
+  ],
+  "final_feature_order_in_model": [
+    "矫正视力",
+    "矫正球镜度数(D)",
+    "矫正柱镜度数(D)",
+    "IOLMaster-Cyl(D)",
+    "年龄",
+    "是否配合检查",
+    "脱位程度"
+  ],
+  "n_features": 7,
+  "categorical_encoding_maps": {
+    "是否配合检查": {
+      "否": 0,
+      "是": 1
+    },
+    "脱位程度": {
+      "中": 0,
+      "轻": 1,
+      "重": 2
+    }
+  },
+  "target_column": "是否需要手术",
+  "target_in_feature_matrix": false,
+  "label_mapping": {
+    "不手术": 0,
+    "手术": 1
+  },
+  "fill_strategy": {
+    "numerical": "median",
+    "categorical": "most_frequent"
+  }
+}

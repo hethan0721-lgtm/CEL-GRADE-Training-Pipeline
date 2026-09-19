@@ -9,13 +9,14 @@ This repository provides the training and evaluation pipelines for two models de
 
 Both modules include source code, command-line interfaces, dependency files, automated tests, and usage documentation. Input and output locations are managed through command-line arguments or repository-relative paths.
 
-This repository does not include real patient data, research images, patient-level predictions, or trained model weights.
+**Official, hash-verified model weights are now available for both models** — see [Pretrained Model Weights](#pretrained-model-weights) below and [`MODEL_WEIGHTS.md`](MODEL_WEIGHTS.md) for full details. This repository does not include, and the released weights do not contain, real patient data, research images, or patient-level predictions.
 
 ## Repository Structure
 
 ```text
 CEL-GRADE-Training-Pipeline/
 ├── README.md
+├── MODEL_WEIGHTS.md
 ├── .gitignore
 ├── image_pipeline/
 │   ├── README.md
@@ -26,6 +27,7 @@ CEL-GRADE-Training-Pipeline/
 │   ├── README.md
 │   ├── requirements.txt
 │   ├── requirements-dev.txt
+│   ├── pretrained/          # official M0_CLIN weights (see below)
 │   └── src/
 ├── evaluation/
 │   ├── README.md
@@ -72,6 +74,8 @@ The main workflow includes:
 
 The module includes fully artificial tabular datasets for verifying installation, input structure, and end-to-end execution. These synthetic data do not represent a real patient population and must not be used to estimate clinical performance.
 
+The official, hash-verified M0_CLIN weights are included in this repository at `text_pipeline/pretrained/` — see [Pretrained Model Weights](#pretrained-model-weights).
+
 For full details, see [`text_pipeline/README.md`](text_pipeline/README.md).
 
 ### M0_IMG: Ophthalmic Image Classification Model
@@ -90,9 +94,53 @@ The main workflow includes:
 8. Saving the checkpoint with the highest validation accuracy.
 9. Evaluating the model on the test partition and supporting single-image prediction.
 
-The module does not include research images or trained model weights. Users must provide authorized image data that follow the required directory structure.
+The module does not include research images. Users must provide authorized image data that follow the required directory structure. The official, hash-verified M0_IMG weights are distributed separately as a GitHub Release asset (too large for Git) — see [Pretrained Model Weights](#pretrained-model-weights).
 
 For full details, see [`image_pipeline/README.md`](image_pipeline/README.md).
+
+## Pretrained Model Weights
+
+Both models have official, hash-verified released weights. Full details (feature order, checksums, loading examples, known limitations) are in [`MODEL_WEIGHTS.md`](MODEL_WEIGHTS.md).
+
+### Text model (M0_CLIN) — included in this Git repository
+
+```text
+text_pipeline/pretrained/
+├── best_xgboost_model.pkl
+├── feature_engineer.pkl
+├── feature_configuration.json
+└── SHA256SUMS.txt
+```
+
+### Image model (M0_IMG) — GitHub Release asset
+
+Because of file size, the image model weights are published as a
+**GitHub Release** rather than committed to Git history:
+
+**[Release: model-weights-v1.0.0](https://github.com/hethan0721-lgtm/hethan0721-lgtm-CEL-GRADE-Training-Pipeline/releases/tag/model-weights-v1.0.0)**
+
+Download `best_model_inference.pth` and `label_mapping.pkl` from that
+Release and place them together in:
+
+```text
+image_pipeline/models/
+├── best_model_inference.pth
+└── label_mapping.pkl
+```
+
+### Verifying downloads
+
+Always verify SHA256 checksums after downloading, against
+`text_pipeline/pretrained/SHA256SUMS.txt` (text model, in this repo) or the
+`SHA256SUMS.txt` asset attached to the Release (image model):
+
+```bash
+sha256sum -c SHA256SUMS.txt
+```
+
+See [`MODEL_WEIGHTS.md`](MODEL_WEIGHTS.md) for the full checksum values, a
+Python pickle-safety reminder, and evidence that the released weights
+reproduce the original training run's results exactly.
 
 ## Installation
 
@@ -234,14 +282,24 @@ Fixed random seeds improve reproducibility within the same software and hardware
 
 ## Data and Model Availability
 
-This repository does not include:
+**Trained model weights**: official, hash-verified weights for both M0_CLIN
+(text) and M0_IMG (image) are now available — see
+[Pretrained Model Weights](#pretrained-model-weights) and
+[`MODEL_WEIGHTS.md`](MODEL_WEIGHTS.md).
+
+This repository, and the released model weights, do **not** include and
+never will include:
 
 * Real patient data
 * Ophthalmic research images
 * Identifiable patient information
 * Patient-level predictions
-* Trained model weights
+* The original full training checkpoint for M0_IMG (866 MiB, including
+  optimizer state and training history) — only the smaller inference-only
+  checkpoint derived from it is published, with parameter-level equality
+  and bitwise output equivalence verified against the original (see
+  `MODEL_WEIGHTS.md`)
 
-The tabular files in `examples/synthetic_tabular_data/` are entirely generated by software. They are provided only to demonstrate the expected input structure, verify the software interface, and support automated testing. They are not derived from real patients and must not be used to train a clinical model, estimate clinical performance, or draw medical conclusions.
+The tabular files in `examples/synthetic_tabular_data/` are entirely generated by software. They are provided only to demonstrate the expected input structure, verify the software interface, and support automated testing. They are not derived from real patients and must not be used to train a clinical model, estimate clinical performance, or draw medical conclusions. **This repository does not publish the real clinical training data used to produce the released weights.**
 
 Users must provide their own authorized data in the format required by the corresponding module. Sensitive, restricted, or identifiable clinical data must not be committed to a public code repository.

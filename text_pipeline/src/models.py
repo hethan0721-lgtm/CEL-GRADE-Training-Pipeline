@@ -230,8 +230,19 @@ class SurgeryClassifier:
         Returns:
             SurgeryClassifier: The restored classifier instance.
         """
-        with open(save_path, 'rb') as f:
-            data = pickle.load(f)
+        try:
+            with open(save_path, 'rb') as f:
+                data = pickle.load(f)
+        except ModuleNotFoundError:
+            # Only the frozen release weights under pretrained/ (produced by
+            # the private training project's older module layout) hit this
+            # path; a freshly trained-and-saved model always loads via the
+            # plain pickle.load() above and never reaches this fallback. See
+            # compatibility_loader.py for exactly which legacy class is
+            # mapped and why.
+            from .compatibility_loader import CompatibilityUnpickler
+            with open(save_path, 'rb') as f:
+                data = CompatibilityUnpickler(f).load()
 
         # Create new instance
         classifier = cls(model_type=data['model_type'], config=data['config'])

@@ -59,3 +59,11 @@ Thumbs.db
 # Allow future synthetic example files
 !examples/**/*.csv
 !examples/**/*.png
+
+# Whitelist ONLY the two official, hash-verified M0_CLIN release weight
+# files at their exact published paths. This does NOT lift the *.pkl rule
+# above for anything else -- local training/smoke-test artifacts (e.g.
+# text_pipeline/outputs/models/*.pkl) remain ignored, as do any other .pkl
+# files anywhere else in the repository.
+!text_pipeline/pretrained/best_xgboost_model.pkl
+!text_pipeline/pretrained/feature_engineer.pkl

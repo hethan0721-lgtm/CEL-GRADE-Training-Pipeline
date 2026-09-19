@@ -273,8 +273,19 @@ class FeatureEngineer:
         Returns:
             FeatureEngineer: The restored feature engineer instance.
         """
-        with open(save_path, 'rb') as f:
-            data = pickle.load(f)
+        try:
+            with open(save_path, 'rb') as f:
+                data = pickle.load(f)
+        except ModuleNotFoundError:
+            # Only the frozen release artifact under pretrained/ (produced
+            # by the private training project's older module layout) hits
+            # this path; a freshly fit-and-saved engineer always loads via
+            # the plain pickle.load() above and never reaches this
+            # fallback. See compatibility_loader.py for exactly which
+            # legacy class is mapped and why.
+            from .compatibility_loader import CompatibilityUnpickler
+            with open(save_path, 'rb') as f:
+                data = CompatibilityUnpickler(f).load()
 
         # Create a new instance
         engineer = cls(config=data['config'])

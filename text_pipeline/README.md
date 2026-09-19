@@ -336,13 +336,17 @@ The test suite uses synthetic data only. It does not require or access real clin
 
 ## 11. Data and Model Availability
 
+The official, hash-verified M0_CLIN weights and fitted preprocessing
+artifacts are included in this repository at `pretrained/` (see the
+[repository-root `MODEL_WEIGHTS.md`](../MODEL_WEIGHTS.md) for checksums,
+the required feature order, a loading example, and known limitations).
+
 This repository does not include:
 
 * Real patient data
 * Identifiable clinical information
 * Real patient-level predictions
-* Trained model weights
-* Fitted preprocessing artifacts
+* The private clinical dataset used to train the released weights
 * Clinical performance results derived from private datasets
 
 The files in [`examples/synthetic_tabular_data/`](../examples/synthetic_tabular_data/) are generated entirely by software. They are provided only to demonstrate the expected input structure, verify the software interface, and support automated testing.

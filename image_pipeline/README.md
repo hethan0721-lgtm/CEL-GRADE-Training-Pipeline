@@ -367,7 +367,18 @@ The tests create temporary, non-medical solid-color images with Pillow. They do 
 
 ## 12. Data and Model Availability
 
-This repository does not include research images, patient data, trained model checkpoints, or patient-level predictions.
+The official, hash-verified M0_IMG inference-only checkpoint and label
+mapping are published as assets on the
+[`model-weights-v1.0.0` GitHub Release](https://github.com/hethan0721-lgtm/hethan0721-lgtm-CEL-GRADE-Training-Pipeline/releases/tag/model-weights-v1.0.0)
+(too large to store in Git). Download both files and place them together
+in `image_pipeline/models/` — see the
+[repository-root `MODEL_WEIGHTS.md`](../MODEL_WEIGHTS.md) for checksums, a
+loading example, and evidence that this checkpoint reproduces the original
+training run's results.
+
+This repository does not include research images, patient data, the
+original full training checkpoint (which included optimizer state and
+training history), or patient-level predictions.
 
 Users must provide their own authorized and appropriately labeled image data in the directory structure described above.
 
